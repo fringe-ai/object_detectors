@@ -5,8 +5,11 @@ from numba import njit
 from numba.np.extensions import cross2d
 import torch.nn.functional as F
 
+BYTES_PER_FLOAT = 4
+GPU_MEM_LIMIT = 1024**3  # 1 GB memory limit
+
 @torch.jit.script
-def _rescale_masks(masks, boxes, img_h: int, img_w: int, skip_empty: bool = True):
+def rescale_mask_func(masks, boxes, img_h: int, img_w: int, skip_empty: bool = True):
     """
     Args:
         masks: N, 1, H, W
@@ -61,7 +64,7 @@ def _rescale_masks(masks, boxes, img_h: int, img_w: int, skip_empty: bool = True
 
 @torch.jit.script
 def rescale_masks(
-    masks: torch.Tensor, boxes: torch.Tensor, image_shape: Tuple[int, int], threshold: float = 0.5, gpu_mem_limit: int = 1024**3, bytes_per_float: int = 4
+    masks: torch.Tensor, boxes: torch.Tensor, image_shape: Tuple[int, int], threshold: float = 0.5
 ):
     """
     Paste a set of masks that are of a fixed resolution (e.g., 28 x 28) into an image.
@@ -109,7 +112,7 @@ def rescale_masks(
     else:
         # GPU benefits from parallelism for larger chunks, but may have memory issue
         # int(img_h) because shape may be tensors in tracing
-        num_chunks = int(np.ceil(N * int(img_h) * int(img_w) * bytes_per_float / gpu_mem_limit))
+        num_chunks = int(np.ceil(N * int(img_h) * int(img_w) * BYTES_PER_FLOAT / GPU_MEM_LIMIT))
         assert (
             num_chunks <= N
         ), "Default GPU_MEM_LIMIT in mask_ops.py is too small; try increasing it"
