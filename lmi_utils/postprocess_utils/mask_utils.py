@@ -3,6 +3,7 @@ import torch
 from typing import Tuple
 from numba import njit
 from numba.np.extensions import cross2d
+import torch.nn.functional as F
 
 @torch.jit.script
 def _rescale_masks(masks, boxes, img_h: int, img_w: int, skip_empty: bool = True):
@@ -187,9 +188,9 @@ def points_to_segments(points):
     """
     if isinstance(points, torch.Tensor):
         points = points.cpu().numpy()
-    return points[quickhull(points)]
+    return points[quickhull(points.astype(np.float64))]
 
-def mask_to_polygon(mask, value=1):
+def mask_to_polygon(mask, value=1.0):
     """
     Converts a mask to a polygon using the Quickhull algorithm.
 
@@ -201,10 +202,10 @@ def mask_to_polygon(mask, value=1):
         numpy.ndarray: An array of points representing the polygon formed by the Quickhull algorithm.
     """
     if isinstance(mask, torch.Tensor):
-        points = torch.nonzero(mask == 1.0, as_tuple=False)[:,[1,0]].cpu().numpy()
+        points = torch.nonzero(mask == value, as_tuple=False)[:,[1,0]].cpu().numpy()
     else:
         points = np.vstack(np.where(mask == value))[::-1].T
-    return points_to_segments(points)
+    return points_to_segments(points.astype(np.float64))
 
 def segment_to_obb(points):
     """
