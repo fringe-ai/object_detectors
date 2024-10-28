@@ -122,7 +122,7 @@ def rescale_masks(
         N, img_h, img_w, device=device, dtype=torch.bool if threshold >= 0 else torch.uint8
     )
     for inds in chunks:
-        masks_chunk, spatial_inds = _rescale_masks(
+        masks_chunk, spatial_inds = rescale_mask_func(
             masks[inds, None, :, :], boxes[inds], img_h, img_w, skip_empty=device.type == "cpu"
         )
 
