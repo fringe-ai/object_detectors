@@ -4,9 +4,11 @@ from cuda import cudart
 import numpy as np
 import detectron2_lmi.utils.common_runtime as common
 from gadget_utils.pipeline_utils import plot_one_box
+from postprocess_utils.mask_utils import rescale_masks, mask_to_obb
 import cv2
 import logging
 import torch
+
 import time
 
 
@@ -95,20 +97,20 @@ class Detectron2TRT(ModelBase):
             common.memcpy_device_to_host(outputs[o], self.model_outputs[o]["allocation"])
         return outputs
     
-    @staticmethod
-    def postprocess_mask(box, mask, image_height, image_width, threshold=0.5):
-        image_mask = np.zeros((image_height, image_width), dtype=np.uint8)
-        w = box[2] - box[0] + 1
-        h = box[3] - box[1] + 1
-        mask = mask > threshold
-        mask = mask.astype(np.uint8)
-        mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
-        x_0, x_1 = max(box[0], 0), min(box[2] + 1, image_width)
-        y_0, y_1 = max(box[1], 0), min(box[3] + 1, image_height)
-        image_mask[y_0:y_1, x_0:x_1] = mask[
-            (y_0 - box[1]):(y_1 - box[1]), (x_0 - box[0]):(x_1 - box[0])
-        ]
-        return image_mask
+    # @staticmethod
+    # def postprocess_mask(box, mask, image_height, image_width, threshold=0.5):
+    #     image_mask = np.zeros((image_height, image_width), dtype=np.uint8)
+    #     w = box[2] - box[0] + 1
+    #     h = box[3] - box[1] + 1
+    #     mask = mask > threshold
+    #     mask = mask.astype(np.uint8)
+    #     mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
+    #     x_0, x_1 = max(box[0], 0), min(box[2] + 1, image_width)
+    #     y_0, y_1 = max(box[1], 0), min(box[3] + 1, image_height)
+    #     image_mask[y_0:y_1, x_0:x_1] = mask[
+    #         (y_0 - box[1]):(y_1 - box[1]), (x_0 - box[0]):(x_1 - box[0])
+    #     ]
+    #     return image_mask
     
     def postprocess(self, images, predictions, **kwargs):
         results = {
@@ -126,11 +128,6 @@ class Detectron2TRT(ModelBase):
         tile_offsets = kwargs.get('tile_offsets', None)
         image_metadata = kwargs.get(f"image_metadata", {})
         image_h, image_w = images[0].shape[0], images[0].shape[1]
-        orig_image_height = image_h
-        orig_image_width = image_w
-        if image_metadata is not None:
-            orig_image_height = image_metadata.get('height', image_h)
-            orig_image_width = image_metadata.get('width', image_w)
         
         
         num_preds, boxes, scores, classes, masks = predictions[:5]
@@ -159,19 +156,11 @@ class Detectron2TRT(ModelBase):
             filtered_masks = masks[idx][valid_scores]
             batch_masks = []
             if process_masks:
-                for i, box in enumerate(batch_boxes):
-                    label = batch_classes[i]
-                    mask = filtered_masks[i]
-                    
-                    batch_masks.append(
-                        Detectron2TRT.postprocess_mask(
-                            box=box,
-                            mask=mask,
-                            image_height=image_h,
-                            image_width=image_w,
-                            threshold=mask_threshold_map.get(label, 0.5)
-                        )
-                    )
+                batch_masks = rescale_masks(
+                    torch.from_numpy(filtered_masks).cuda(),
+                    torch.from_numpy(batch_boxes).cuda(),
+                    (image_h, image_w,)
+                )
             else:
                 batch_masks = filtered_masks
             processed_masks.append(batch_masks)
