@@ -1,5 +1,5 @@
 # Anomalib Integration
-This document demonstrates the usage of the latest version of [Anomalib](https://github.com/openvinotoolkit/anomalib) for anomaly detection. If you are using older version, refer to [this link](https://github.com/lmitechnologies/LMI_AI_Solutions/blob/ais/anomaly_detectors/anomalib_lmi/README_old.md).
+This document demonstrates the usage of the latest version of [Anomalib v1.1.1](https://github.com/openvinotoolkit/anomalib/releases/tag/v1.1.1) for anomaly detection. If you are using older version, refer to [this link](https://github.com/lmitechnologies/LMI_AI_Solutions/blob/ais/anomaly_detectors/anomalib_lmi/README_old.md).
 
 
 ## Requirements
@@ -12,18 +12,18 @@ This document demonstrates the usage of the latest version of [Anomalib](https:/
 - ubuntu >= 22.04
 - python >= 3.10
 
-#### TensorRT on GoMax
-TODO
+#### Convert to TensorRT on a GoMax
+- Jetpack >= 6.0
 
 ## Usage
 
 The current implementation requires the following workflow:
 
 1. Organize data
-2. Train model on x86 
-3. convert the model to .pt and tensorRT engine
+2. Train model on a x86 system
+3. convert the model to .pt and convert to tensorRT engine
 4. Test tensorRT engine using the histogram method for anomaly threshold selection
-5. Deploy tensorRT engine on GoMax
+5. Deploy tensorRT engine on a GoMax
 
 
 ## 1. Organize Data
@@ -57,8 +57,8 @@ Basic steps to train an Anomalib model:
 4. convert the model to a pt file
 
 ### 2.1 Initialize/modify dockerfile for X86
-
-```docker
+x86.dockerfile:
+```dockerfile
 FROM nvcr.io/nvidia/pytorch:24.04-py3
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -73,30 +73,27 @@ RUN pip install tabulate
 RUN git clone -b v1.1.1 https://github.com/openvinotoolkit/anomalib.git && cd anomalib && pip install -e .
 RUN anomalib install --option core
 
-# TODO: merge this branch to AIS
-RUN git clone -b FAIE-1673 https://github.com/lmitechnologies/LMI_AI_Solutions.git
+RUN git clone https://github.com/lmitechnologies/LMI_AI_Solutions.git
 ```
 
 ### 2.2 Initialize/modify docker-compose.yaml
 Install the [Nvidia Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).   
-The following sample yaml file trains a PaDiM model and outputs the model at `./training/2024-09-23`. The [padim.yaml](https://github.com/lmitechnologies/LMI_AI_Solutions/blob/ais/anomaly_detectors/anomalib_lmi/configs/padim.yaml) should exist in `./configs`. 
+The following sample yaml file trains a PaDiM model and outputs the model at `./training/2024-09-23`. The [patchcore.yaml](https://github.com/lmitechnologies/LMI_AI_Solutions/blob/ais/anomaly_detectors/anomalib_lmi/configs/patchcore.yaml) should exist in `./configs`. 
 
 ```yaml
 services:
   anomalib_train:
     build:
       context: .
-      dockerfile: ./dockerfile
+      dockerfile: ./x86.dockerfile
     volumes:
       - ./data:/app/data/
       - ./configs/:/app/configs/
-      - ./scripts/:/app/scripts/
-      - ./training/2024-09-23/:/app/out/
-    shm_size: '20gb'
+      - ./training/2024-09-06/:/app/out/
+    ipc: host
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     command: >
-      anomalib train --config /app/configs/padim.yaml
-
+      anomalib train --config /app/configs/patchcore.yaml
 ```
 ### 2.3 Train
 
@@ -116,14 +113,13 @@ services:
   anomalib_convert:
     build:
       context: .
-      dockerfile: ./dockerfile
+      dockerfile: ./x86.dockerfile
     volumes:
-      - ./training/2024-09-23/Padim/dataset/v0:/app/out/
-    shm_size: '20gb'
+      - ./training/2024-09-06/Patchcore/dataset/v0:/app/out/
+    ipc: host
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     command: >
-      anomalib export --model Padim --export_type torch --ckpt_path /app/out/weights/lightning/model.ckpt --default_root_dir /app/out
-
+      anomalib export --model Patchcore --export_type torch --ckpt_path /app/out/weights/lightning/model.ckpt --default_root_dir /app/out
 ```
 
 
@@ -139,7 +135,41 @@ services:
 The same docker file as defined in [2.1 Initialize/modify dockerfile](#21-initializemodify-dockerfile-for-x86).
 
 ### 3.1.2 Initialize/modify docker file for ARM
-TODO
+arm.dockerfile:
+```dockerfile
+FROM nvcr.io/nvidia/l4t-tensorrt:r8.6.2-devel
+ARG DEBIAN_FRONTEND=noninteractive
+ENV PATH=$PATH:/usr/src/tensorrt/bin/
+
+RUN apt-get update
+RUN apt-get install libgl1 wget -y
+WORKDIR /app
+
+# dependencies for anomalib
+RUN pip install pip setuptools packaging scikit-learn onnx tabulate -U
+RUN pip install opencv-python -U --user
+
+# Installing from anomalib src
+RUN git clone -b v1.1.1 https://github.com/openvinotoolkit/anomalib.git && cd anomalib && pip install -e .
+RUN anomalib install --option core
+
+# Install torch dependencies
+RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.6.3/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.6.3_1.0-1_arm64.deb
+RUN dpkg -i cusparselt-local-tegra-repo-ubuntu2204-0.6.3_1.0-1_arm64.deb
+RUN cp /var/cusparselt-local-tegra-repo-ubuntu2204-0.6.3/cusparselt-*-keyring.gpg /usr/share/keyrings/
+RUN apt-get update
+RUN apt-get -y install libcusparselt0 libcusparselt-dev libopenblas-dev
+
+# install torch
+RUN pip install https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+f70bd71a48.nv24.06.15634931-cp310-cp310-linux_aarch64.whl
+
+# install torchvision
+RUN apt-get install -y libjpeg-dev zlib1g-dev libpython3-dev libopenblas-dev libavcodec-dev libavformat-dev libswscale-dev
+RUN git clone --branch 0.19.0 https://github.com/pytorch/vision torchvision   # see below for version of torchvision to download
+RUN cd torchvision && export BUILD_VERSION=0.19.0 && python3 setup.py install --user
+
+RUN git clone -b FAIE-1673 https://github.com/lmitechnologies/LMI_AI_Solutions.git
+```
 
 ### 3.2 Initialize/modify docker-compose file
 ```yaml
@@ -147,10 +177,10 @@ services:
   anomalib_trt:
     build:
       context: .
-      dockerfile: ./dockerfile
+      dockerfile: ./arm.dockerfile
     volumes:
-      - ./training/2024-09-23/Padim/dataset/v0/weights:/app/weights
-    shm_size: '20gb'
+      - ./training/2024-09-06/Patchcore/dataset/v0/weights:/app/weights
+    ipc: host
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     command: >
       bash -c "source /app/LMI_AI_Solutions/lmi_ai.env && python -m anomalib_lmi.anomaly_model2 -a convert -i /app/weights/torch/model.pt -e /app/weights/engine"
@@ -179,12 +209,12 @@ services:
   anomalib_infer:
     build:
       context: .
-      dockerfile: ./dockerfile
+      dockerfile: ./arm.dockerfile
     volumes:
       - ./data:/app/data/
       - ./outputs:/app/outputs/
-      - ./training/2024-09-23/Padim/dataset/v0/weights:/app/weights
-    shm_size: '20gb'
+      - ./training/2024-09-06/Padim/dataset/v0/weights:/app/weights
+    ipc: host
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     command: >
       bash -c "source /app/LMI_AI_Solutions/lmi_ai.env && python -m anomalib_lmi.anomaly_model2 -i /app/weights/engine/model.engine -d /app/data -o /app/outputs -p"
