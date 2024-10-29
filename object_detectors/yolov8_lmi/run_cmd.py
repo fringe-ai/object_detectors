@@ -1,8 +1,9 @@
 import subprocess
-from datetime import date
+from datetime import date, datetime
 import logging
 import yaml
 import os
+
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ if __name__=='__main__':
         hyp = yaml.safe_load(f)
        
     # use today's date as the default output folder name
-    defaults = {'name':date.today().strftime("%Y-%m-%d")}
+    defaults = {'name':f'{datetime.today().strftime("%Y:%m:%d:%H:%M:%S")}'}
     
     # add other default configs
     check_keys = {} # map < key : True if is_file else False >

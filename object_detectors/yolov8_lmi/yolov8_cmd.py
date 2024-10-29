@@ -100,7 +100,7 @@ class Yolov8_Cmd:
         update the hyp with default configs if the key does not exist
         """
         # use today's date as the default output folder name
-        defaults = {'name':f'"{datetime.today().strftime("%Y:%m:%d:%H:%M:%S")}"'}
+        defaults = {'name':f'{datetime.today().strftime("%Y:%m:%d:%H:%M:%S")}'}
         
         # add other default configs
         path_wts = get_model_path(self.MODEL_PATH, hyp['mode'])
