@@ -83,8 +83,7 @@ if __name__=='__main__':
         hyp = yaml.safe_load(f)
        
     # use today's date as the default output folder name
-    defaults = {'name':f'{datetime.today().strftime("%Y:%m:%d:%H:%M:%S")}'}
-    
+    defaults = {'name':f'{datetime.today().strftime("year-%Y-month-%m-day-%d-time-%H:%M:%S")}'}
     # add other default configs
     check_keys = {} # map < key : True if is_file else False >
     path_wts = get_model_path(MODEL_PATH, hyp['mode'])
@@ -116,4 +115,7 @@ if __name__=='__main__':
     
     # run final command
     subprocess.run(final_cmd, check=True)
+    
+    # rename the saved directory
+    
     
