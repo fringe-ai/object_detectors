@@ -82,7 +82,8 @@ if __name__=='__main__':
         hyp = yaml.safe_load(f)
        
     # use today's date as the default output folder name
-    defaults = {'name':date.today().strftime("%Y-%m-%d")}
+    today = date.today().strftime("%Y-%m-%d")
+    defaults = {}
     
     # add other default configs
     check_keys = {} # map < key : True if is_file else False >
@@ -110,7 +111,7 @@ if __name__=='__main__':
     sanity_check(hyp, check_keys)
     
     # get final command
-    final_cmd = ['yolo'] + [f'{k}={v}' for k, v in hyp.items()]
+    final_cmd = ['yolo'] + [f'{k}={v}' for k, v in hyp.items()] + [f'name="{today}"']
     logger.info(f'cmd: {final_cmd}')
     
     # run final command
