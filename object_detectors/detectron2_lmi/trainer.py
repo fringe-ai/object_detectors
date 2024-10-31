@@ -37,9 +37,12 @@ def main(args):
     logger.info(f"Output Directory: {cfg.OUTPUT_DIR}")
     # register the datasets train, test
     
-    register_datasets(dataset_dir=os.path.join(args.dataset_dir, "train"), dataset_name=cfg.DATASETS.TRAIN[0])
+    for dataset_name in cfg.DATASETS.TRAIN:
+        register_datasets(dataset_dir=os.path.join(args.dataset_dir, f"{dataset_name}"), dataset_name=dataset_name)
+        logger.info(f"registered dataset: {dataset_name}")
+    
     if len(cfg.DATASETS.TEST) > 0:
-        register_datasets(dataset_dir=os.path.join(args.dataset_dir, "train"), dataset_name=cfg.DATASETS.TEST[0])
+        register_datasets(dataset_dir=os.path.join(args.dataset_dir, cfg.DATASETS.TEST[0]), dataset_name=cfg.DATASETS.TEST[0])
     
     logger.info("Starting training run")
     
