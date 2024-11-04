@@ -78,7 +78,7 @@ RUN git clone https://github.com/lmitechnologies/LMI_AI_Solutions.git
 
 ### 2.2 Initialize/modify docker-compose.yaml
 Install the [Nvidia Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).   
-The following sample yaml file trains a PaDiM model and outputs the model at `./training/2024-09-23`. The [patchcore.yaml](https://github.com/lmitechnologies/LMI_AI_Solutions/blob/ais/anomaly_detectors/anomalib_lmi/configs/patchcore.yaml) should exist in `./configs`. 
+The following sample yaml file trains a PaDiM model and outputs the model at `./training/2024-09-06`. The [patchcore.yaml](https://github.com/lmitechnologies/LMI_AI_Solutions/blob/ais/anomaly_detectors/anomalib_lmi/configs/patchcore.yaml) should exist in `./configs`. 
 
 ```yaml
 services:
