@@ -78,6 +78,7 @@ class DET2GraphSurgeon:
         self.det2_cfg = det2_setup(config_file, weights)
 
         # Getting model characteristics.
+        self.mask_on = self.det2_cfg.MODEL.MASK_ON
         self.fpn_out_channels = self.det2_cfg.MODEL.FPN.OUT_CHANNELS
         self.num_classes = self.det2_cfg.MODEL.ROI_HEADS.NUM_CLASSES
         self.first_NMS_max_proposals = self.det2_cfg.MODEL.RPN.POST_NMS_TOPK_TEST
@@ -692,122 +693,124 @@ class DET2GraphSurgeon:
                 second_nms_threshold,
                 "box_outputs",
             )
+            final_graph_reshape_node = None
+            if self.mask_on:
 
-            # Create ROIAlign node.
-            mask_pooler_output = self.ROIAlign(
-                nms_outputs[1],
-                p2,
-                p3,
-                p4,
-                p5,
-                self.second_ROIAlign_pooled_size,
-                self.second_ROIAlign_sampling_ratio,
-                self.second_ROIAlign_type,
-                self.second_NMS_max_proposals,
-                "mask_pooler",
-            )
-
-            # Reshape mask pooler output.
-            mask_pooler_shape = np.asarray(
-                [
-                    self.second_NMS_max_proposals * self.batch_size,
-                    self.fpn_out_channels,
+                # Create ROIAlign node.
+                mask_pooler_output = self.ROIAlign(
+                    nms_outputs[1],
+                    p2,
+                    p3,
+                    p4,
+                    p5,
                     self.second_ROIAlign_pooled_size,
-                    self.second_ROIAlign_pooled_size,
-                ],
-                dtype=np.int64,
-            )
-            mask_pooler_reshape_node = self.graph.op_with_const(
-                "Reshape", "mask_pooler/reshape", mask_pooler_output, mask_pooler_shape
-            )
-
-            # Get first Conv op in mask head and connect ROIAlign's squeezed output to it.
-            mask_head_conv = self.graph.find_node_by_op_name(
-                "Conv", "/roi_heads/mask_head/mask_fcn1/Conv"
-            )
-            mask_head_conv.inputs[0] = mask_pooler_reshape_node[0]
-
-            # Reshape node that is preparing 2nd NMS class outputs for Add node that comes next.
-            classes_reshape_shape = np.asarray(
-                [self.second_NMS_max_proposals * self.batch_size], dtype=np.int64
-            )
-            classes_reshape_node = self.graph.op_with_const(
-                "Reshape",
-                "box_outputs/reshape_classes",
-                nms_outputs[3],
-                classes_reshape_shape,
-            )
-
-            # This loop will generate an array used in Add node, which eventually will help Gather node to pick the single
-            # class of interest per bounding box, instead of creating 80 masks for every single bounding box.
-            add_array = []
-            for i in range(self.second_NMS_max_proposals * self.batch_size):
-                if i == 0:
-                    start_pos = 0
-                else:
-                    start_pos = i * self.num_classes
-                add_array.append(start_pos)
-
-            # This Add node is one of the Gather node inputs, Gather node performs gather on 0th axis of data tensor
-            # and requires indices that set tensors to be withing bounds, this Add node provides the bounds for Gather.
-            add_array = np.asarray(add_array, dtype=np.int32)
-            classes_add_node = self.graph.op_with_const(
-                "Add", "box_outputs/add", classes_reshape_node[0], add_array
-            )
-
-            # Get the last Conv op in mask head and reshape it to correctly gather class of interest's masks.
-            last_conv = self.graph.find_node_by_op_name(
-                "Conv", "/roi_heads/mask_head/predictor/Conv"
-            )
-            last_conv_reshape_shape = np.asarray(
-                [
-                    self.second_NMS_max_proposals * self.num_classes * self.batch_size,
-                    self.mask_out_res,
-                    self.mask_out_res,
-                ],
-                dtype=np.int64,
-            )
-            last_conv_reshape_node = self.graph.op_with_const(
-                "Reshape",
-                "mask_head/reshape_all_masks",
-                last_conv.outputs[0],
-                last_conv_reshape_shape,
-            )
-
-            # Gather node that selects only masks belonging to detected class, 79 other masks are discarded.
-            final_gather = self.graph.gather(
-                "mask_head/final_gather",
-                last_conv_reshape_node[0],
-                classes_add_node[0],
-                0,
-            )
-
-            # Get last Sigmoid node and connect Gather node to it.
-            mask_head_sigmoid = self.graph.find_node_by_op_name(
-                "Sigmoid", "/roi_heads/mask_head/Sigmoid"
-            )
-            mask_head_sigmoid.inputs[0] = final_gather[0]
-
-            # Final Reshape node, reshapes output of Sigmoid, important for various batch_size support (not tested yet).
-            final_graph_reshape_shape = np.asarray(
-                [
-                    self.batch_size,
+                    self.second_ROIAlign_sampling_ratio,
+                    self.second_ROIAlign_type,
                     self.second_NMS_max_proposals,
-                    self.mask_out_res,
-                    self.mask_out_res,
-                ],
-                dtype=np.int64,
-            )
-            final_graph_reshape_node = self.graph.op_with_const(
-                "Reshape",
-                "mask_head/final_reshape",
-                mask_head_sigmoid.outputs[0],
-                final_graph_reshape_shape,
-            )
-            final_graph_reshape_node[0].dtype = np.float32
-            final_graph_reshape_node[0].name = "detection_masks"
+                    "mask_pooler",
+                )
 
-            return nms_outputs, final_graph_reshape_node[0]
+                # Reshape mask pooler output.
+                mask_pooler_shape = np.asarray(
+                    [
+                        self.second_NMS_max_proposals * self.batch_size,
+                        self.fpn_out_channels,
+                        self.second_ROIAlign_pooled_size,
+                        self.second_ROIAlign_pooled_size,
+                    ],
+                    dtype=np.int64,
+                )
+                mask_pooler_reshape_node = self.graph.op_with_const(
+                    "Reshape", "mask_pooler/reshape", mask_pooler_output, mask_pooler_shape
+                )
+
+                # Get first Conv op in mask head and connect ROIAlign's squeezed output to it.
+                mask_head_conv = self.graph.find_node_by_op_name(
+                    "Conv", "/roi_heads/mask_head/mask_fcn1/Conv"
+                )
+                mask_head_conv.inputs[0] = mask_pooler_reshape_node[0]
+
+                # Reshape node that is preparing 2nd NMS class outputs for Add node that comes next.
+                classes_reshape_shape = np.asarray(
+                    [self.second_NMS_max_proposals * self.batch_size], dtype=np.int64
+                )
+                classes_reshape_node = self.graph.op_with_const(
+                    "Reshape",
+                    "box_outputs/reshape_classes",
+                    nms_outputs[3],
+                    classes_reshape_shape,
+                )
+
+                # This loop will generate an array used in Add node, which eventually will help Gather node to pick the single
+                # class of interest per bounding box, instead of creating 80 masks for every single bounding box.
+                add_array = []
+                for i in range(self.second_NMS_max_proposals * self.batch_size):
+                    if i == 0:
+                        start_pos = 0
+                    else:
+                        start_pos = i * self.num_classes
+                    add_array.append(start_pos)
+
+                # This Add node is one of the Gather node inputs, Gather node performs gather on 0th axis of data tensor
+                # and requires indices that set tensors to be withing bounds, this Add node provides the bounds for Gather.
+                add_array = np.asarray(add_array, dtype=np.int32)
+                classes_add_node = self.graph.op_with_const(
+                    "Add", "box_outputs/add", classes_reshape_node[0], add_array
+                )
+
+                # Get the last Conv op in mask head and reshape it to correctly gather class of interest's masks.
+                last_conv = self.graph.find_node_by_op_name(
+                    "Conv", "/roi_heads/mask_head/predictor/Conv"
+                )
+                last_conv_reshape_shape = np.asarray(
+                    [
+                        self.second_NMS_max_proposals * self.num_classes * self.batch_size,
+                        self.mask_out_res,
+                        self.mask_out_res,
+                    ],
+                    dtype=np.int64,
+                )
+                last_conv_reshape_node = self.graph.op_with_const(
+                    "Reshape",
+                    "mask_head/reshape_all_masks",
+                    last_conv.outputs[0],
+                    last_conv_reshape_shape,
+                )
+
+                # Gather node that selects only masks belonging to detected class, 79 other masks are discarded.
+                final_gather = self.graph.gather(
+                    "mask_head/final_gather",
+                    last_conv_reshape_node[0],
+                    classes_add_node[0],
+                    0,
+                )
+
+                # Get last Sigmoid node and connect Gather node to it.
+                mask_head_sigmoid = self.graph.find_node_by_op_name(
+                    "Sigmoid", "/roi_heads/mask_head/Sigmoid"
+                )
+                mask_head_sigmoid.inputs[0] = final_gather[0]
+
+                # Final Reshape node, reshapes output of Sigmoid, important for various batch_size support (not tested yet).
+                final_graph_reshape_shape = np.asarray(
+                    [
+                        self.batch_size,
+                        self.second_NMS_max_proposals,
+                        self.mask_out_res,
+                        self.mask_out_res,
+                    ],
+                    dtype=np.int64,
+                )
+                final_graph_reshape_node = self.graph.op_with_const(
+                    "Reshape",
+                    "mask_head/final_reshape",
+                    mask_head_sigmoid.outputs[0],
+                    final_graph_reshape_shape,
+                )
+                final_graph_reshape_node[0].dtype = np.float32
+                final_graph_reshape_node[0].name = "detection_masks"
+
+            return nms_outputs, final_graph_reshape_node[0] if self.mask_on else None
 
         # Only Detectron 2's Mask-RCNN R50-FPN 3x is supported currently.
         p2, p3, p4, p5 = backbone()
@@ -816,7 +819,8 @@ class DET2GraphSurgeon:
             rpn_outputs, p2, p3, p4, p5, second_nms_threshold
         )
         # Append segmentation head output.
-        box_head_outputs.append(mask_head_output)
+        if self.mask_on:
+            box_head_outputs.append(mask_head_output)
         # Set graph outputs, both bbox and segmentation heads.
         self.graph.outputs = box_head_outputs
         self.sanitize()
