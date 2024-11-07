@@ -13,7 +13,7 @@ PATH = pathlib.Path(__file__)
 ROOT = PATH.parents[3]
 sys.path.append(os.path.join(ROOT, 'lmi_utils'))
 
-from image_utils.tile_image import to_tiles,to_images,ScaleMode
+from image_utils.img_tile import to_tiles,to_images,ScaleMode
 from system_utils import path_utils
 
 logging.basicConfig()
@@ -83,11 +83,12 @@ def test_cmds():
     my_env = os.environ.copy()
     my_env['PYTHONPATH'] = f'$PYTHONPATH:{str(ROOT)}/lmi_utils'
     with tempfile.TemporaryDirectory() as tmpdir:
-        cmd = ['python','lmi_utils/image_utils/tile_image.py','--option','tile','-i',str(PATH_IMG),'-o',str(tmpdir)]
+        cmd = ['python','lmi_utils/image_utils/img_tile.py','--option','tile',
+               '-i',str(PATH_IMG),'-o',str(tmpdir),'--tile','224','224','--stride','224','224']
         out = subprocess.run(cmd,check=True,env=my_env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         logger.info(out.stdout.decode())
         with tempfile.TemporaryDirectory() as tmpdir2:
-            cmd = ['python','lmi_utils/image_utils/tile_image.py','--option','untile','-i',str(tmpdir),'-o',str(tmpdir2)]
+            cmd = ['python','lmi_utils/image_utils/img_tile.py','--option','untile','-i',str(tmpdir),'-o',str(tmpdir2)]
             out = subprocess.run(cmd,check=True,env=my_env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             logger.info(out.stdout.decode())
             imgs2 = load_imgs(tmpdir2)

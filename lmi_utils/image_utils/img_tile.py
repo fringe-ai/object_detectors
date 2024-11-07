@@ -33,7 +33,17 @@ def __to_tiles(source:Path, dest:Path, tile_hw:list, stride_hw:list, mode=ScaleM
     tiler.write_metadata(dest/(source.stem+'-metadata.pt'))
 
 
-def to_tiles(source:str, dest:str, tile_hw:list, stride_hw:list, mode=ScaleMode.PADDING, recursive=False):
+def to_tiles(source:str, dest:str, tile_hw, stride_hw, mode=ScaleMode.PADDING, recursive=False):
+    """convert images to tiles
+
+    Args:
+        source (str): a path to a single image or a path to a directory
+        dest (str): the output directory
+        tile_hw (int | list): tile height and width. If it's a int, tile width and height are the same.
+        stride_hw (int | list): stride height and width. If it's a int, stride width and height are the same.
+        mode (ScaleMode, optional): scale mode. Defaults to ScaleMode.PADDING.
+        recursive (bool, optional): load images recursively. Defaults to False.
+    """
     
     src_path = Path(source)
     dest_path = Path(dest)
@@ -49,6 +59,13 @@ def to_tiles(source:str, dest:str, tile_hw:list, stride_hw:list, mode=ScaleMode.
 
 @torch.inference_mode()
 def to_images(source, dest, mode=ScaleMode.PADDING):
+    """convert tiles to images
+
+    Args:
+        source (str): the source directory of tile images
+        dest (str): the output directory
+        mode (ScaleMode, optional): scale mode. Defaults to ScaleMode.PADDING.
+    """
     src_path = Path(source)
     dest_path = Path(dest)
     dest_path.mkdir(parents=True,exist_ok=True)
@@ -91,8 +108,8 @@ if __name__=="__main__":
     ap.add_argument('--option', required=True)
     ap.add_argument('-i','--src', required=True)
     ap.add_argument('-o','--dest', required=True)
-    ap.add_argument('--tile_hw', type=list, default=[224,224], help='tile hight and width')
-    ap.add_argument('--stride_hw', type=list, default=[224,224], help='stride hight and width')
+    ap.add_argument('--tile', type=int, nargs=2, default=[224,224], help='tile hight and width')
+    ap.add_argument('--stride', type=int, nargs=2, default=[224,224], help='stride hight and width')
     ap.add_argument('--recursive', action='store_true', help='load images recursively')
     ap.add_argument('--resize', action='store_true', help='interpolate if it needs to resize images, otherwise pad zeros')
     
@@ -100,7 +117,7 @@ if __name__=="__main__":
     
     mode = ScaleMode.INTERPOLATION if args.resize else ScaleMode.PADDING
     if args.option == 'tile':
-        to_tiles(args.src,args.dest,args.tile_hw,args.stride_hw,mode=mode,recursive=args.recursive)
+        to_tiles(args.src,args.dest,args.tile,args.stride,mode=mode,recursive=args.recursive)
     elif args.option == 'untile':
         to_images(args.src,args.dest,mode)
         
