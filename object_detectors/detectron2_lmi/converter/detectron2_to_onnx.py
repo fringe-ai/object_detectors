@@ -86,14 +86,14 @@ def export_scripting(torch_model):
     if isinstance(torch_model, GeneralizedRCNN):
 
         class ScriptableAdapter(ScriptableAdapterBase):
-            def forward(self, inputs: Tuple[Dict[str, torch.Tensor]]) -> List[Dict[str, Tensor]]:
+            def forward(self, inputs: List[Dict[str, torch.Tensor]]) -> List[Dict[str, Tensor]]:
                 instances = self.model.inference(inputs, do_postprocess=False)
                 return [i.get_fields() for i in instances]
 
     else:
 
         class ScriptableAdapter(ScriptableAdapterBase):
-            def forward(self, inputs: Tuple[Dict[str, torch.Tensor]]) -> List[Dict[str, Tensor]]:
+            def forward(self, inputs: List[Dict[str, torch.Tensor]]) -> List[Dict[str, Tensor]]:
                 instances = self.model(inputs)
                 return [i.get_fields() for i in instances]
 

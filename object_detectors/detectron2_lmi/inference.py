@@ -219,9 +219,6 @@ if __name__ == "__main__":
     
     with open(args.class_map, "r") as f:
         class_map = json.load(f)
-        
-    # with open(args.confidence_map, "r") as f:
-    #     confidences = json.load(f)
     
     confidence_map = {
         str(v): args.confidence_threshold for k,v in class_map.items()
