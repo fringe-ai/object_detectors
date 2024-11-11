@@ -10,7 +10,6 @@ sys.path.append(os.path.join(ROOT, 'lmi_utils'))
 sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
-import gadget_utils.pipeline_utils as pipeline_utils
 from anomalib_lmi.anomaly_model import AnomalyModel
 
 
@@ -26,15 +25,15 @@ OUTPUT_PATH = 'tests/assets/validation/ad_v0'
 
 
 def test_model():
-    AnomalyModel.test(
-        MODEL_PATH, DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True,
-    )
+    ad = AnomalyModel(MODEL_PATH)
+    ad.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
     
     
 def test_convert():
     with tempfile.TemporaryDirectory() as t:
-        AnomalyModel.convert(MODEL_PATH,t,fp16=True)
-        AnomalyModel.test(
-            os.path.join(t,'model.engine'), DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True,
-        )
+        ad = AnomalyModel(MODEL_PATH)
+        ad.convert(MODEL_PATH,t)
+        
+        ad2 = AnomalyModel(os.path.join(t,'model.engine'))
+        ad2.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
     

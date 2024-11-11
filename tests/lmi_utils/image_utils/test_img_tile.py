@@ -83,14 +83,17 @@ def test_cmds():
     my_env = os.environ.copy()
     my_env['PYTHONPATH'] = f'$PYTHONPATH:{str(ROOT)}/lmi_utils'
     with tempfile.TemporaryDirectory() as tmpdir:
-        cmd = ['python','lmi_utils/image_utils/img_tile.py','--option','tile',
-               '-i',str(PATH_IMG),'-o',str(tmpdir),'--tile','224','224','--stride','224','224']
-        out = subprocess.run(cmd,check=True,env=my_env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        logger.info(out.stdout.decode())
+        cmd = f'python -m image_utils.img_tile --option tile -i {str(PATH_IMG)} -o {str(tmpdir)} --tile 224 224 --stride 224 224'
+        out = subprocess.run(cmd,check=True,shell=True,env=my_env,capture_output=True,text=True)
+        logger.info(out.stdout)
+        logger.info(out.stderr)
+        
         with tempfile.TemporaryDirectory() as tmpdir2:
-            cmd = ['python','lmi_utils/image_utils/img_tile.py','--option','untile','-i',str(tmpdir),'-o',str(tmpdir2)]
-            out = subprocess.run(cmd,check=True,env=my_env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-            logger.info(out.stdout.decode())
+            cmd = f'python -m image_utils.img_tile --option untile -i {str(tmpdir)} -o {str(tmpdir2)}'
+            out = subprocess.run(cmd,check=True,shell=True,env=my_env,capture_output=True,text=True)
+            logger.info(out.stdout)
+            logger.info(out.stderr)
+            
             imgs2 = load_imgs(tmpdir2)
             for im1,im2 in zip(imgs,imgs2):
                 assert torch.equal(im1,im2)

@@ -4,8 +4,6 @@ from collections import OrderedDict, namedtuple
 import tensorrt as trt
 import torch
 import numpy as np
-import cv2
-import time
 import albumentations as A
 
 from .base import Anomalib_Base
@@ -32,11 +30,15 @@ class AnomalyModel(Anomalib_Base):
     logger.setLevel(logging.INFO)
     
     def __init__(self, model_path):
+        if not os.path.isfile(model_path):
+            raise Exception(f'Cannot find the model file: {model_path}')
+        
         if torch.cuda.is_available():
             self.device = torch.device('cuda:0')
         else:
             self.logger.warning('GPU device unavailable. Use CPU instead.')
             self.device = torch.device('cpu')
+            
         _,ext=os.path.splitext(model_path)
         self.logger.info(f"Loading model: {model_path}")
         if ext=='.engine':
@@ -59,7 +61,7 @@ class AnomalyModel(Anomalib_Base):
                 im = self.from_numpy(np.empty(shape, dtype=dtype)).to(self.device)
                 self.bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
             self.binding_addrs = OrderedDict((n, d.ptr) for n, d in self.bindings.items())
-            self.shape_inspection=list(shape[-2:])
+            self.model_shape=list(shape[-2:])
             self.inference_mode='TRT'
         elif ext=='.pt':     
             model = torch.load(model_path,map_location=self.device)["model"]
@@ -69,9 +71,13 @@ class AnomalyModel(Anomalib_Base):
             self.pt_transform=A.from_dict(self.pt_metadata["transform"])
             for d in self.pt_metadata['transform']['transform']['transforms']:
                 if d['__class_fullname__']=='Resize':
-                    self.shape_inspection = [d['height'], d['width']]
+                    self.model_shape = [d['height'], d['width']]
             self.inference_mode='PT'
-    
+        else:
+            raise Exception(f'Unknown model format: {ext}')
+        
+        
+    @torch.inference_mode()
     def normalize(self,image: np.ndarray) -> np.ndarray:
         """
         Desc: Normalize the image to the given mean and standard deviation for consistency with pytorch backbone
@@ -83,7 +89,9 @@ class AnomalyModel(Anomalib_Base):
         image -= mean
         image /= std
         return image
-
+    
+    
+    @torch.inference_mode()
     def preprocess(self, image):
         '''
         Desc: Preprocess input image.
@@ -92,7 +100,7 @@ class AnomalyModel(Anomalib_Base):
         
         '''
         if self.inference_mode=='TRT':
-            h, w =  self.shape_inspection
+            h,w =  self.model_shape
             img = pipeline_utils.resize_image(self.normalize(image), W=w, H=h)
             input_dtype = np.float16 if self.fp16 else np.float32
             input_batch = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0).astype(input_dtype)
@@ -104,15 +112,19 @@ class AnomalyModel(Anomalib_Base):
             return processed_image.to(self.device)
         else:
             raise Exception(f'Unknown model format: {self.inference_mode}')
-
+        
+    
+    @torch.inference_mode()
     def warmup(self):
         '''
         Desc: Warm up model using a np zeros array with shape matching model input size.
         Args: None
         '''
-        shape=self.shape_inspection+[3,]
+        shape=self.model_shape+[3,]
         self.predict(np.zeros(shape))
-
+        
+        
+    @torch.inference_mode()
     def predict(self, image):
         '''
         Desc: Model prediction 
@@ -133,12 +145,12 @@ class AnomalyModel(Anomalib_Base):
         return output
 
 
+
 if __name__ == '__main__':
     import argparse
-    import os
 
     ap = argparse.ArgumentParser()
-    ap.add_argument('-a','--action', default="test", help='Action: convert, test')
+    ap.add_argument('-a','--action', default="test", nargs='?', choices=['convert','test'], help='Action modes')
     ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
     ap.add_argument('-e','--export_dir', default="/app/export")
     ap.add_argument('-d','--data_dir', default="/app/data", help='Data file directory.')
@@ -152,21 +164,15 @@ if __name__ == '__main__':
     action=args['action']
     model_path = args['model_path']
     export_dir = args['export_dir']
+    
+    ad = AnomalyModel(model_path)
+    
     if action=='convert':
-        if not os.path.isfile(model_path):
-            raise Exception('Cannot find the model file. Need a valid model file to convert.')
-        if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
-        AnomalyModel.convert(model_path,export_dir,fp16=True)
+        os.makedirs(export_dir,exist_ok=True)
+        ad.convert(model_path,export_dir)
 
     if action=='test':
-        if not os.path.isfile(model_path):
-            raise Exception(f'Error finding {model_path}. Need a valid model file to test model.')
-        if not os.path.exists(args['annot_dir']):
-            os.makedirs(args['annot_dir'])
-        AnomalyModel.test(model_path, args['data_dir'],
-             args['annot_dir'],
-             generate_stats=args['generate_stats'],
-             annotate_inputs=args['plot'],
-             anom_threshold=args['ad_threshold'],
-             anom_max=args['ad_max'])
+        os.makedirs(args['annot_dir'],exist_ok=True)
+        ad.test(args['data_dir'],args['annot_dir'],args['generate_stats'],
+                args['plot'],args['ad_threshold'],args['ad_max'])
+        
