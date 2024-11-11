@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import tempfile
+import subprocess
 
 # add path to the repo
 PATH = os.path.abspath(__file__)
@@ -36,4 +37,21 @@ def test_convert():
         
         ad2 = AnomalyModel(os.path.join(t,'model.engine'))
         ad2.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
+        
+        
+def test_cmds():
+    with tempfile.TemporaryDirectory() as t:
+        my_env = os.environ.copy()
+        my_env['PYTHONPATH'] = f'$PYTHONPATH:{ROOT}/lmi_utils:{ROOT}/anomaly_detectors'
+        cmd = f'python -m anomalib_lmi.anomaly_model -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p'
+        logger.info(f'running cmd: {cmd}')
+        result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
+        logger.info(result.stdout)
+        logger.info(result.stderr)
+        
+        cmd = f'python -m anomalib_lmi.anomaly_model -a convert -i {MODEL_PATH} -e {str(t)}'
+        logger.info(f'running cmd: {cmd}')
+        result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
+        logger.info(result.stdout)
+        logger.info(result.stderr)
     
