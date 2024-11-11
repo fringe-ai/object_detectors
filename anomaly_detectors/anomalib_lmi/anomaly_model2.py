@@ -10,6 +10,7 @@ from torchvision.transforms import v2
 
 from .base import Anomalib_Base
 from image_utils.tiler import Tiler
+import gadget_utils.pipeline_utils as pipeline_utils
 
 
 logging.basicConfig()
@@ -26,13 +27,14 @@ class AnomalyModel2(Anomalib_Base):
     logger = logging.getLogger('AnomalyModel v2')
     logger.setLevel(logging.INFO)
     
-    def __init__(self, model_path, tile=None, stride=None):
+    def __init__(self, model_path, input_hw=None, tile=None, stride=None):
         """_summary_
 
         Args:
             model_path (str): the path to the model file, either a pt or trt engine file
-            tile (int | list, optional): tile [h,w]. Defaults to None.
-            stride (int | list, optional): stride [h,w]. Defaults to None.
+            input_hw(int | list, optional), the input image shape [h,w]. Must provide if using tiling.
+            tile (int | list, optional): tile size [h,w]. Must provide if using tiling.
+            stride (int | list, optional): stride size [h,w]. Must provide if using tiling.
             
         attributes:
             - self.device: device to run model on
@@ -89,9 +91,17 @@ class AnomalyModel2(Anomalib_Base):
         
         # init tiler
         self.tiler = None
+        self.input_hw = None
         if tile is not None and stride is not None:
+            if input_hw is None:
+                raise Exception('Must provide input_hw using tiling.')
+            self.logger.info(f'input hw: {input_hw}')
             self.logger.info(f'init tiler with tile={tile}, stride={stride}')
             self.tiler = Tiler(tile,stride)
+            if isinstance(input_hw,int):
+                input_hw = [input_hw]*2
+            self.input_hw = input_hw
+            
             
     
     @torch.inference_mode()
@@ -102,6 +112,12 @@ class AnomalyModel2(Anomalib_Base):
             - image: numpy array [H,W,Ch]
         '''
         img = self.from_numpy(image).float()
+        
+        # resize to self.input_hw for tiling
+        if self.input_hw is not None:
+            h,w = self.input_hw
+            img = pipeline_utils.resize_image(img,H=h,W=w)
+        
         # grayscale to rgb
         if img.ndim == 2:
             img = img.unsqueeze(-1).repeat(1,1,3)
@@ -157,18 +173,15 @@ class AnomalyModel2(Anomalib_Base):
         return output
         
 
-    def warmup(self, input_hw=None):
+    def warmup(self):
         '''
         Desc: 
             Warm up model using a np zeros array with shape matching model input size.
         Args: 
             input_hw(list, optional): if using tiling, must provide input h,w.
         '''
-        input_hw = None if input_hw is None else list(input_hw)
         if self.tiler is not None:
-            if input_hw is None:
-                raise Exception('Must provide input h,w when using tiling')
-            zeros = np.zeros(input_hw+[3,])
+            zeros = np.zeros(self.input_hw+[3,])
         else:
             zeros = np.zeros(self.model_shape+[3,])
         self.predict(zeros)
@@ -188,7 +201,7 @@ if __name__ == '__main__':
     ap.add_argument('-p','--plot',action='store_true', help='plot the annotated images')
     ap.add_argument('-t','--ad_threshold',type=float,default=None,help='AD patch threshold.')
     ap.add_argument('-m','--ad_max',type=float,default=None,help='AD patch max anomaly.')
-    ap.add_argument('--hw',type=int,nargs=2,default=None,help='input image shape (h,w). Muse be provided if using tiling in convert mode.')
+    ap.add_argument('--hw',type=int,nargs=2,default=None,help='input image shape (h,w). Muse be provided if using tiling')
     ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
     ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
 
@@ -197,12 +210,12 @@ if __name__ == '__main__':
     model_path = args['model_path']
     export_dir = args['export_dir']
     
-    ad = AnomalyModel2(model_path,args['tile'],args['stride'])
+    ad = AnomalyModel2(model_path,args['hw'],args['tile'],args['stride'])
     
     if action=='convert':
         os.makedirs(export_dir, exist_ok=True)
-        ad.convert(model_path,export_dir,args['hw'])
+        ad.convert(model_path,export_dir)
     elif action=='test':
         os.makedirs(args['annot_dir'], exist_ok=True)
         ad.test(args['data_dir'],args['annot_dir'],args['generate_stats'],
-                args['plot'],args['ad_threshold'],args['ad_max'],)
+                args['plot'],args['ad_threshold'],args['ad_max'])

@@ -34,13 +34,12 @@ class Anomalib_Base(ABC):
         return torch.from_numpy(x).to(self.device) if isinstance(x, np.ndarray) else x
 
 
-    def convert_to_onnx(self, export_path, input_hw=None, opset_version=14):
+    def convert_to_onnx(self, export_path, opset_version=14):
         '''
         Desc: Convert existing .pt file to onnx
         Args:
             - path to output .onnx file
             - opset_version: onnx version ID
-            - input_hw: input (h,w)
         '''
         # write metadata to export path
         with open(os.path.join(os.path.dirname(export_path), "metadata.json"), "w", encoding="utf-8") as metadata_file:
@@ -48,9 +47,7 @@ class Anomalib_Base(ABC):
         
         tiler = getattr(self,'tiler',None)
         if tiler is not None:
-            if input_hw is None:
-                raise Exception('Must provide input (h,w) when using tiling')
-            zeros = torch.zeros(1,3,*input_hw,device=self.device)
+            zeros = torch.zeros(1,3,*self.input_hw,device=self.device)
             tiles = self.tiler.tile(zeros)
             b,c,h,w = tiles.shape
         else:
@@ -101,14 +98,13 @@ class Anomalib_Base(ABC):
             self.logger.warning(f"metadata.json not found in {onnx_dir}")
             
             
-    def convert(self, model_path, export_path, input_hw=None, fp16=True):
+    def convert(self, model_path, export_path, fp16=True):
         '''
         Desc: Converts .onnx or .pt file to tensorRT engine
         
         Args:
             - model path: model file path .pt or .onnx
             - export path: engine file path
-            - input_hw: input [h,w]. Must provide if using tiling
             - fp16: floating point number length
         '''
         if os.path.isfile(export_path):
@@ -122,7 +118,7 @@ class Anomalib_Base(ABC):
             # convert to onnx
             self.logger.info('Converting pt to onnx...')
             onnx_path = os.path.join(export_path, 'model.onnx')
-            self.convert_to_onnx(onnx_path,input_hw)
+            self.convert_to_onnx(onnx_path)
             self.logger.info(f'the onnx model is saved at {onnx_path}')
             # # convert to trt
             self.logger.info('Converting onnx to trt engine...')
@@ -231,7 +227,8 @@ class Anomalib_Base(ABC):
             anom_map = self.predict(img)
             proctime.append(time.time() - t0)
             fname=os.path.split(image_path)[1]
-            h,w = self.model_shape
+            input_hw = getattr(self, 'input_hw', None)
+            h,w = self.model_shape if input_hw is None else input_hw
             img_preproc=pipeline_utils.resize_image(img, H=h, W=w)
             img_all.append(img_preproc)
             anom_all.append(anom_map)

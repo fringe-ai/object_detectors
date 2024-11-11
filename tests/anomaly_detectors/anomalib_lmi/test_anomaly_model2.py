@@ -62,38 +62,38 @@ def test_compare_results_with_anomalib():
         
         
 def test_warmup():
-    ad1 = AnomalyModel2(MODEL_PATH,224,224)
-    ad1.warmup([1024,1024])
+    ad1 = AnomalyModel2(MODEL_PATH,672,224,112)
+    ad1.warmup()
     ad2 = AnomalyModel2(MODEL_PATH)
     ad2.warmup()
     
     
 def test_model():
-    ad = AnomalyModel2(MODEL_PATH,224,224)
-    ad.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
+    ad = AnomalyModel2(MODEL_PATH,1120,224,224)
+    ad.test(DATA_PATH, OUTPUT_PATH)
     
     
 def test_convert():
     with tempfile.TemporaryDirectory() as t:
-        ad = AnomalyModel2(MODEL_PATH,224,224)
-        ad.convert(MODEL_PATH,t,[1024,1024])
+        ad = AnomalyModel2(MODEL_PATH,1120,224,224)
+        ad.convert(MODEL_PATH,t)
         
         engine_path = os.path.join(t,'model.engine')
-        ad2 = AnomalyModel2(engine_path,224,224)
-        ad2.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
+        ad2 = AnomalyModel2(engine_path,1120,224,224)
+        ad2.test(DATA_PATH, OUTPUT_PATH)
     
     
 def test_cmds():
     with tempfile.TemporaryDirectory() as t:
         my_env = os.environ.copy()
         my_env['PYTHONPATH'] = f'$PYTHONPATH:{ROOT}/lmi_utils:{ROOT}/anomaly_detectors'
-        cmd = f'python -m anomalib_lmi.anomaly_model2 -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --tile 224 224 --stride 224 224'
+        cmd = f'python -m anomalib_lmi.anomaly_model2 -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --hw 1120 1120 --tile 224 224 --stride 224 224'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
         logger.info(result.stderr)
         
-        cmd = f'python -m anomalib_lmi.anomaly_model2 -a convert -i {MODEL_PATH} -e {str(t)} --hw 1024 1024 --tile 224 224 --stride 224 224'
+        cmd = f'python -m anomalib_lmi.anomaly_model2 -a convert -i {MODEL_PATH} -e {str(t)} --hw 1120 1120 --tile 224 224 --stride 224 224'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
