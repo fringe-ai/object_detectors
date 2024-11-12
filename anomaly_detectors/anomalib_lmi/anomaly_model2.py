@@ -20,6 +20,22 @@ MINIMUM_QUANT=1e-12
 Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
 
 
+def to_list(data):
+    """convert to a two element list
+
+    Args:
+        data (int | list): a int or a two element list
+
+    Returns:
+        list: _description_
+    """
+    if isinstance(data, int):
+        return [data]*2
+    if len(data) != 2:
+        raise Exception(f'Must be a two element list, but got {data}')
+    return list(data)
+
+
 class AnomalyModel2(Anomalib_Base):
     '''
     Desc: Class used for AD model inference.
@@ -84,7 +100,7 @@ class AnomalyModel2(Anomalib_Base):
             self.logger.info(f"Model metadata: {self.pt_metadata}")
             for d in self.pt_model.transform.transforms:
                 if isinstance(d, v2.Resize):
-                    self.model_shape = d.size
+                    self.model_shape = to_list(d.size)
             self.inference_mode='PT'
         else:
             raise Exception(f'Unknown model format: {ext}')
@@ -95,12 +111,17 @@ class AnomalyModel2(Anomalib_Base):
         if tile is not None and stride is not None:
             if input_hw is None:
                 raise Exception('Must provide input_hw using tiling.')
+            
+            tile = to_list(tile)
+            input_hw = to_list(input_hw)
+            self.tiler = Tiler(tile,stride)
+            self.input_hw = input_hw
+            
+            if self.model_shape != tile:
+                raise Exception(f'tile shape {tile} mismatch with model expected shape: {self.model_shape}')
+            
             self.logger.info(f'input hw: {input_hw}')
             self.logger.info(f'init tiler with tile={tile}, stride={stride}')
-            self.tiler = Tiler(tile,stride)
-            if isinstance(input_hw,int):
-                input_hw = [input_hw]*2
-            self.input_hw = input_hw
             
             
     

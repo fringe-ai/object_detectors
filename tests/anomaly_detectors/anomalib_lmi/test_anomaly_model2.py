@@ -1,3 +1,4 @@
+import pytest
 import logging
 from collections.abc import Sequence
 import sys
@@ -69,21 +70,16 @@ def test_warmup():
     
     
 def test_model():
-    ad = AnomalyModel2(MODEL_PATH,1120,224,224)
+    with pytest.raises(Exception) as e_info:
+        ad = AnomalyModel2(MODEL_PATH,1120,256,224)
+        
+    ad = AnomalyModel2(MODEL_PATH,672,224,224)
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     
-def test_convert():
-    with tempfile.TemporaryDirectory() as t:
-        ad = AnomalyModel2(MODEL_PATH,1120,224,224)
-        ad.convert(MODEL_PATH,t)
-        
-        engine_path = os.path.join(t,'model.engine')
-        ad2 = AnomalyModel2(engine_path,1120,224,224)
-        ad2.test(DATA_PATH, OUTPUT_PATH)
-    
-    
 def test_cmds():
+    """test model inference and model to tensorrt conversion
+    """
     with tempfile.TemporaryDirectory() as t:
         my_env = os.environ.copy()
         my_env['PYTHONPATH'] = f'$PYTHONPATH:{ROOT}/lmi_utils:{ROOT}/anomaly_detectors'
