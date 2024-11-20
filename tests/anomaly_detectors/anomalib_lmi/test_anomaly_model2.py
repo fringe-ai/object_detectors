@@ -63,17 +63,18 @@ def test_compare_results_with_anomalib():
         
         
 def test_warmup():
-    ad1 = AnomalyModel2(MODEL_PATH,672,224,112)
-    ad1.warmup()
-    ad2 = AnomalyModel2(MODEL_PATH)
-    ad2.warmup()
+    ad = AnomalyModel2(MODEL_PATH,224,112)
+    ad.warmup([672,640])
+    
+    ad = AnomalyModel2(MODEL_PATH)
+    ad.warmup([256,224])
     
     
 def test_model():
-    with pytest.raises(Exception) as e_info:
-        ad = AnomalyModel2(MODEL_PATH,1120,256,224)
-        
-    ad = AnomalyModel2(MODEL_PATH,672,224,224)
+    ad = AnomalyModel2(MODEL_PATH,224,224,'resize')
+    ad.test(DATA_PATH, OUTPUT_PATH)
+    
+    ad = AnomalyModel2(MODEL_PATH)
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     
@@ -83,13 +84,13 @@ def test_cmds():
     with tempfile.TemporaryDirectory() as t:
         my_env = os.environ.copy()
         my_env['PYTHONPATH'] = f'$PYTHONPATH:{ROOT}/lmi_utils:{ROOT}/anomaly_detectors'
-        cmd = f'python -m anomalib_lmi.anomaly_model2 -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --hw 1120 1120 --tile 224 224 --stride 224 224'
+        cmd = f'python -m anomalib_lmi.anomaly_model2 test -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --tile 224 224 --stride 224 224 --resize'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
         logger.info(result.stderr)
         
-        cmd = f'python -m anomalib_lmi.anomaly_model2 -a convert -i {MODEL_PATH} -e {str(t)} --hw 1120 1120 --tile 224 224 --stride 224 224'
+        cmd = f'python -m anomalib_lmi.anomaly_model2 convert -i {MODEL_PATH} -e {str(t)} --hw 1120 1120 --tile 224 224 --stride 224 224'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)

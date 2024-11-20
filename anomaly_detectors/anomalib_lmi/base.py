@@ -15,11 +15,29 @@ logging.basicConfig()
 
 MINIMUM_QUANT=1e-12
 
+
+def to_list(data):
+    """convert to a two element list
+    
+    Args:
+        data (int | list): a int or a two element list
+        
+    Returns:
+        list: _description_
+    """
+    if isinstance(data, int):
+        return [data]*2
+    if len(data) != 2:
+        raise Exception(f'Must be a two element list, but got {data}')
+    return list(data)
+
+
 class Anomalib_Base(ABC):
     
     logger = logging.getLogger('Anomalib Base')
     logger.setLevel(logging.INFO)
     
+    tiler = None
     
     @abstractmethod
     def __init__(self) -> None:
@@ -34,20 +52,23 @@ class Anomalib_Base(ABC):
         return torch.from_numpy(x).to(self.device) if isinstance(x, np.ndarray) else x
 
 
-    def convert_to_onnx(self, export_path, opset_version=14):
+    def convert_to_onnx(self, export_path, input_hw=None, opset_version=14):
         '''
         Desc: Convert existing .pt file to onnx
         Args:
             - path to output .onnx file
+            - input_hw: a int if h==w or a list of (h,w)
             - opset_version: onnx version ID
         '''
         # write metadata to export path
         with open(os.path.join(os.path.dirname(export_path), "metadata.json"), "w", encoding="utf-8") as metadata_file:
             json.dump(self.pt_metadata, metadata_file, ensure_ascii=False, indent=4)
         
-        tiler = getattr(self,'tiler',None)
-        if tiler is not None:
-            zeros = torch.zeros(1,3,*self.input_hw,device=self.device)
+        if self.tiler is not None:
+            if input_hw is None:
+                raise Exception('Must provide input (h,w) when convert model to onnx')
+            hw = to_list(input_hw)
+            zeros = torch.zeros(1,3,*hw,device=self.device)
             tiles = self.tiler.tile(zeros)
             b,c,h,w = tiles.shape
         else:
@@ -98,13 +119,14 @@ class Anomalib_Base(ABC):
             self.logger.warning(f"metadata.json not found in {onnx_dir}")
             
             
-    def convert(self, model_path, export_path, fp16=True):
+    def convert(self, model_path, export_path, input_hw=None, fp16=True):
         '''
         Desc: Converts .onnx or .pt file to tensorRT engine
         
         Args:
             - model path: model file path .pt or .onnx
             - export path: engine file path
+            - input_hw: a int if h==w or a list of input height and width
             - fp16: floating point number length
         '''
         if os.path.isfile(export_path):
@@ -118,7 +140,7 @@ class Anomalib_Base(ABC):
             # convert to onnx
             self.logger.info('Converting pt to onnx...')
             onnx_path = os.path.join(export_path, 'model.onnx')
-            self.convert_to_onnx(onnx_path)
+            self.convert_to_onnx(onnx_path, input_hw)
             self.logger.info(f'the onnx model is saved at {onnx_path}')
             # # convert to trt
             self.logger.info('Converting onnx to trt engine...')
@@ -227,10 +249,10 @@ class Anomalib_Base(ABC):
             anom_map = self.predict(img)
             proctime.append(time.time() - t0)
             fname=os.path.split(image_path)[1]
-            input_hw = getattr(self, 'input_hw', None)
-            h,w = self.model_shape if input_hw is None else input_hw
-            img_preproc=pipeline_utils.resize_image(img, H=h, W=w)
-            img_all.append(img_preproc)
+            if self.tiler is None:
+                h,w = self.model_shape
+                img=pipeline_utils.resize_image(img, H=h, W=w)
+            img_all.append(img)
             anom_all.append(anom_map)
             fname_all.append(fname)
             path_all.append(image_path)

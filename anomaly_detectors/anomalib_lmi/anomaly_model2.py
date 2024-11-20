@@ -8,8 +8,8 @@ import torch
 import torch.nn.functional as F
 from torchvision.transforms import v2
 
-from .base import Anomalib_Base
-from image_utils.tiler import Tiler
+from .base import Anomalib_Base, to_list
+from image_utils.tiler import Tiler, ScaleMode
 import gadget_utils.pipeline_utils as pipeline_utils
 
 
@@ -20,21 +20,6 @@ MINIMUM_QUANT=1e-12
 Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
 
 
-def to_list(data):
-    """convert to a two element list
-
-    Args:
-        data (int | list): a int or a two element list
-
-    Returns:
-        list: _description_
-    """
-    if isinstance(data, int):
-        return [data]*2
-    if len(data) != 2:
-        raise Exception(f'Must be a two element list, but got {data}')
-    return list(data)
-
 
 class AnomalyModel2(Anomalib_Base):
     '''
@@ -43,15 +28,14 @@ class AnomalyModel2(Anomalib_Base):
     logger = logging.getLogger('AnomalyModel v2')
     logger.setLevel(logging.INFO)
     
-    def __init__(self, model_path, input_hw=None, tile=None, stride=None):
+    def __init__(self, model_path, tile=None, stride=None, tile_mode='padding'):
         """_summary_
 
         Args:
             model_path (str): the path to the model file, either a pt or trt engine file
-            input_hw(int | list, optional), the input image shape [h,w]. Must provide if using tiling.
-            tile (int | list, optional): tile size [h,w]. Must provide if using tiling.
-            stride (int | list, optional): stride size [h,w]. Must provide if using tiling.
-            
+            tile (int | list, optional): tile size [h,w]. Must provide if using tiling
+            stride (int | list, optional): stride size [h,w]. Must provide if using tiling
+            tile_mode (str, optional): 'padding' or 'resize'. Defaults to 'padding'
         attributes:
             - self.device: device to run model on
             - self.fp16: flag for half precision
@@ -83,6 +67,7 @@ class AnomalyModel2(Anomalib_Base):
                 shape = tuple(self.context.get_tensor_shape(name))
                 self.logger.info(f'binding {name} ({dtype}) with shape {shape}')
                 if model.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
+                    input_shape = shape
                     if dtype == np.float16:
                         self.fp16 = True
                 else:
@@ -90,7 +75,8 @@ class AnomalyModel2(Anomalib_Base):
                 im = self.from_numpy(np.empty(shape, dtype=dtype)).to(self.device)
                 self.bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
             self.binding_addrs = OrderedDict((n, d.ptr) for n, d in self.bindings.items())
-            self.model_shape=list(shape[-2:])
+            self.model_shape=list(input_shape[-2:])
+            self.trt_shape = list(input_shape)
             self.inference_mode='TRT'
         elif ext=='.pt':  
             checkpoint = torch.load(model_path,map_location=self.device)
@@ -106,22 +92,17 @@ class AnomalyModel2(Anomalib_Base):
             raise Exception(f'Unknown model format: {ext}')
         
         # init tiler
-        self.tiler = None
-        self.input_hw = None
-        if tile is not None and stride is not None:
-            if input_hw is None:
-                raise Exception('Must provide input_hw using tiling.')
+        if tile is not None:
+            if stride is None:
+                raise Exception('Must provide stride using tiling')
             
             tile = to_list(tile)
-            input_hw = to_list(input_hw)
-            self.tiler = Tiler(tile,stride)
-            self.input_hw = input_hw
-            
             if self.model_shape != tile:
                 raise Exception(f'tile shape {tile} mismatch with model expected shape: {self.model_shape}')
             
-            self.logger.info(f'input hw: {input_hw}')
-            self.logger.info(f'init tiler with tile={tile}, stride={stride}')
+            self.tiler = Tiler(tile,stride)
+            self.tile_mode = ScaleMode.PADDING if tile_mode=='padding' else ScaleMode.INTERPOLATION
+            self.logger.info(f'init tiler with tile={tile}, stride={stride}, mode={self.tile_mode}')
             
             
     
@@ -134,11 +115,6 @@ class AnomalyModel2(Anomalib_Base):
         '''
         img = self.from_numpy(image).float()
         
-        # resize to self.input_hw for tiling
-        if self.input_hw is not None:
-            h,w = self.input_hw
-            img = pipeline_utils.resize_image(img,H=h,W=w)
-        
         # grayscale to rgb
         if img.ndim == 2:
             img = img.unsqueeze(-1).repeat(1,1,3)
@@ -147,12 +123,13 @@ class AnomalyModel2(Anomalib_Base):
         img = img / 255.0
         
         if self.tiler is not None:
-            img = self.tiler.tile(img)
+            img = self.tiler.tile(img,self.tile_mode)
         
         # resize baked into the pt model
-        if self.inference_mode=='TRT':
-            h,w =  self.model_shape
-            img = F.interpolate(img, size=(h,w), mode='bilinear')
+        hw = list(img.shape)
+        if self.inference_mode=='TRT' and hw!=self.trt_shape:
+            self.logger.warning(f'Got {hw}, but trt expects {self.trt_shape}.')
+            img = F.interpolate(img, size=self.model_shape, mode='bilinear')
         
         img = img.contiguous()
         return img.half() if self.fp16 else img
@@ -186,7 +163,7 @@ class AnomalyModel2(Anomalib_Base):
                 raise Exception(f'Unknown prediction type: {type(preds)}')
             
         if self.tiler is not None:
-            output = self.tiler.untile(output)
+            output = self.tiler.untile(output,self.tile_mode)
         
         if isinstance(output, torch.Tensor):
             output = output.cpu().numpy()
@@ -194,17 +171,15 @@ class AnomalyModel2(Anomalib_Base):
         return output
         
 
-    def warmup(self):
+    def warmup(self,input_hw):
         '''
         Desc: 
             Warm up model using a np zeros array with shape matching model input size.
         Args: 
-            input_hw(list, optional): if using tiling, must provide input h,w.
+            input_hw(list): if using tiling, must provide input h,w.
         '''
-        if self.tiler is not None:
-            zeros = np.zeros(self.input_hw+[3,])
-        else:
-            zeros = np.zeros(self.model_shape+[3,])
+        input_hw = to_list(input_hw)
+        zeros = np.zeros(input_hw+[3,])
         self.predict(zeros)
 
 
@@ -213,29 +188,39 @@ if __name__ == '__main__':
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument('-a','--action', default="test", nargs='?', choices=['convert','test'], help='Action modes')
-    ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
-    ap.add_argument('-e','--export_dir', default="/app/export")
-    ap.add_argument('-d','--data_dir', default="/app/data", help='Data file directory.')
-    ap.add_argument('-o','--annot_dir', default="/app/annotation_results", help='Annot file directory.')
-    ap.add_argument('-g','--generate_stats', action='store_true',help='generate the data stats')
-    ap.add_argument('-p','--plot',action='store_true', help='plot the annotated images')
-    ap.add_argument('-t','--ad_threshold',type=float,default=None,help='AD patch threshold.')
-    ap.add_argument('-m','--ad_max',type=float,default=None,help='AD patch max anomaly.')
-    ap.add_argument('--hw',type=int,nargs=2,default=None,help='input image shape (h,w). Muse be provided if using tiling')
-    ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
-    ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
-
+    subs = ap.add_subparsers(dest='action',required=True,help='Action modes: test or convert')
+    
+    test_ap = subs.add_parser('test',help='test model')
+    test_ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
+    test_ap.add_argument('-d','--data_dir', default="/app/data", help='Data file directory.')
+    test_ap.add_argument('-o','--annot_dir', default="/app/annotation_results", help='Annot file directory.')
+    test_ap.add_argument('-g','--generate_stats', action='store_true',help='generate the data stats')
+    test_ap.add_argument('-p','--plot',action='store_true', help='plot the annotated images')
+    test_ap.add_argument('-t','--ad_threshold',type=float,default=None,help='AD patch threshold.')
+    test_ap.add_argument('-m','--ad_max',type=float,default=None,help='AD patch max anomaly.')
+    test_ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
+    test_ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
+    test_ap.add_argument('--resize',action='store_true',help='use resize for tiling')
+    
+    convert_ap = subs.add_parser('convert',help='convert model to trt engine')
+    convert_ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
+    convert_ap.add_argument('-e','--export_dir', default="/app/export")
+    convert_ap.add_argument('--hw',type=int,nargs=2,default=None,help='input image shape (h,w). Muse be provided if using tiling')
+    convert_ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
+    convert_ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
+    convert_ap.add_argument('--resize',action='store_true',help='use resize for tiling, otherwise pad zeros')
     args = vars(ap.parse_args())
+    
     action=args['action']
     model_path = args['model_path']
-    export_dir = args['export_dir']
     
-    ad = AnomalyModel2(model_path,args['hw'],args['tile'],args['stride'])
+    mode = 'resize' if args['resize'] else 'padding'
+    ad = AnomalyModel2(model_path,args['tile'],args['stride'],mode)
     
     if action=='convert':
+        export_dir = args['export_dir']
         os.makedirs(export_dir, exist_ok=True)
-        ad.convert(model_path,export_dir)
+        ad.convert(model_path,export_dir,args['hw'])
     elif action=='test':
         os.makedirs(args['annot_dir'], exist_ok=True)
         ad.test(args['data_dir'],args['annot_dir'],args['generate_stats'],
