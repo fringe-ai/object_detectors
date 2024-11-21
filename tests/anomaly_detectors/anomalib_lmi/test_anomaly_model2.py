@@ -90,7 +90,7 @@ def test_cmds():
         logger.info(result.stdout)
         logger.info(result.stderr)
         
-        cmd = f'python -m anomalib_lmi.anomaly_model2 convert -i {MODEL_PATH} -e {str(t)} --hw 1120 1120 --tile 224 224 --stride 224 224'
+        cmd = f'python -m anomalib_lmi.anomaly_model2 convert -i {MODEL_PATH} -o {str(t)} --hw 1120 1120 --tile 224 224 --stride 224 224'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)

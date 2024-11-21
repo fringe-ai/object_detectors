@@ -176,7 +176,7 @@ class AnomalyModel2(Anomalib_Base):
         Desc: 
             Warm up model using a np zeros array with shape matching model input size.
         Args: 
-            input_hw(list): if using tiling, must provide input h,w.
+            input_hw(int | list): a int if h=w or a list of (h,w)
         '''
         input_hw = to_list(input_hw)
         zeros = np.zeros(input_hw+[3,])
@@ -204,7 +204,7 @@ if __name__ == '__main__':
     
     convert_ap = subs.add_parser('convert',help='convert model to trt engine')
     convert_ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
-    convert_ap.add_argument('-e','--export_dir', default="/app/export")
+    convert_ap.add_argument('-o','--export_dir', default="/app/export")
     convert_ap.add_argument('--hw',type=int,nargs=2,default=None,help='input image shape (h,w). Muse be provided if using tiling')
     convert_ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
     convert_ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
