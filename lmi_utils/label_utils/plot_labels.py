@@ -7,13 +7,14 @@ import logging
 
 #LMI packages
 from label_utils.csv_utils import load_csv
-from label_utils.shapes import Rect, Mask, Keypoint
-from label_utils.plot_utils import plot_one_box, plot_one_polygon, plot_one_pt
+from label_utils.shapes import Rect, Mask, Keypoint, Brush
+from label_utils.plot_utils import plot_one_box, plot_one_polygon, plot_one_pt, plot_one_brush
 from label_utils.bbox_utils import rotate
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig()
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def plot_shape(shape, im, color_map):
@@ -38,6 +39,8 @@ def plot_shape(shape, im, color_map):
     elif isinstance(shape, Keypoint):
         pt = shape.x, shape.y
         plot_one_pt(pt, im, label=shape.category, color=color_map[shape.category])
+    elif isinstance(shape, Brush):
+        plot_one_brush(shape.X,shape.Y,im,label=shape.category,color=color_map[shape.category])
     else:
         raise Exception(f'Unknown shape: {type(shape)}')
     return
@@ -75,8 +78,7 @@ if __name__ == '__main__':
         color_map[cls] = tuple([random.randint(0,255) for _ in range(3)])
 
     logger.info(f'found {len(fname_to_shape)} images')
-    for im_name in fname_to_shape:
-        shapes = fname_to_shape[im_name]
+    for im_name,shapes in fname_to_shape.items():
         im = cv2.imread(shapes[0].fullpath)
         if im is None:
             logger.warning(f'cannot read image: {shapes[0].fullpath}')

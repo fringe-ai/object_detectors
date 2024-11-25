@@ -1,0 +1,13 @@
+services:
+  ais_debug:
+    build:
+      context: .
+      dockerfile: ./dockerfile
+    volumes:
+      - ../:/app/repo
+    runtime: nvidia # ensure that Nvidia Container Toolkit is installed
+    ipc: host
+    command: >
+      bash -c "source /app/repo/lmi_ai.env && 
+      python -m label_utils.lst_to_csv -i /app/repo/data/all -o /app/repo/data/all && 
+      python -m label_utils.plot_labels -i /app/repo/data/all -o /app/repo/data/plot"

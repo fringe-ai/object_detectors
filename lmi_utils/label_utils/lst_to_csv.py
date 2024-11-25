@@ -5,9 +5,10 @@ import json
 import numpy as np
 import collections
 import glob
+from label_studio_sdk.converter.brush import decode_rle
 
 from label_utils.csv_utils import write_to_csv
-from label_utils.shapes import Rect, Mask, Keypoint
+from label_utils.shapes import Rect, Mask, Keypoint, Brush
 from label_utils.bbox_utils import convert_from_ls
 
 logging.basicConfig()
@@ -20,7 +21,7 @@ PRED_NAME = 'preds.csv'
 
 
 def lst_to_shape(result:dict, fname:str, load_confidence=False):
-    """parse the result from label studio result dict, return a Rect/Mask object
+    """parse the result from label studio result dict, return a Shape object
     """
     result_type=result['type']
     labels = result['value'][result_type]
@@ -29,33 +30,33 @@ def lst_to_shape(result:dict, fname:str, load_confidence=False):
     if len(labels) == 0:
         logger.warning(f'found empty label in {fname}, skip')
         return
+    
     label = labels[0]
+    conf = result['value']['score'] if load_confidence else 1.0
     if result_type=='rectanglelabels':   
         # get bbox
         x,y,w,h,angle = convert_from_ls(result)
         x1,y1,w,h = list(map(int,[x,y,w,h]))
         x2,y2 = x1+w, y1+h
-        conf = 1.0
-        if load_confidence:
-            conf = result['value']['score']
-        rect = Rect(im_name=fname, category=label, up_left=[x1,y1], bottom_right=[x2,y2], angle=angle, confidence=conf)
+        rect = Rect(im_name=fname,category=label,up_left=[x1,y1],bottom_right=[x2,y2],angle=angle,confidence=conf)
         return rect
     elif result_type=='polygonlabels':
         points=result['value']['points']
         points_np=np.array(points)
-        x_coordinates = (points_np[:, 0]/100*result['original_width']).astype(np.int32)
-        y_coordinates = (points_np[:, 1]/100*result['original_height']).astype(np.int32)
-        conf = 1.0
-        if load_confidence:
-            conf = result['value']['score']
-        mask = Mask(im_name=fname,category=label,x_vals=list(x_coordinates),y_vals=list(y_coordinates),confidence=conf)
+        xs = (points_np[:, 0]/100*result['original_width']).astype(np.int32)
+        ys = (points_np[:, 1]/100*result['original_height']).astype(np.int32)
+        mask = Mask(im_name=fname,category=label,x_vals=xs,y_vals=ys,confidence=conf)
         return mask
+    elif result_type=='brushlabels':
+        rle = result['value']['rle']
+        h,w = result['original_height'],result['original_width']
+        img = decode_rle(rle).reshape(h,w,4)[:,:,3]
+        mask = img>128
+        brush = Brush(im_name=fname,category=label,mask=mask,confidence=conf)
+        return brush
     elif result_type=='keypointlabels':
         dt = result['value']
         x,y = dt['x']/100*result['original_width'],dt['y']/100*result['original_height']
-        conf = 1.0
-        if load_confidence:
-            conf = dt['score']
         kp = Keypoint(im_name=fname,category=label,x=x,y=y,confidence=conf)
         return kp
     else:
@@ -147,6 +148,6 @@ if __name__ == '__main__':
         raise Exception('The output path should be a directory')
     
     if not os.path.isdir(args.path_out):
-        os.makedirs(args.path_out)    
+        os.makedirs(args.path_out)
     write_to_csv(annots, os.path.join(args.path_out, LABEL_NAME))
     write_to_csv(preds, os.path.join(args.path_out, PRED_NAME))
