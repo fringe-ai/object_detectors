@@ -10,10 +10,11 @@ import json
 import os
 import yaml
 import logging
+import numpy as np
 
 #LMI packages
 from label_utils.csv_utils import load_csv
-from label_utils.shapes import Mask, Rect, Keypoint
+from label_utils.shapes import Mask, Rect, Keypoint, Brush
 from label_utils.bbox_utils import rotate
 
 
@@ -40,9 +41,33 @@ def del_classes(class_to_id, classes=[]):
     for cls in class_to_id:
         class_to_id[cls] = id
         id += 1
+        
+        
+def pts_to_bbox(pts,H,W):
+    """convert a list of pts to yolo box format
+
+    Args:
+        pts (array): a array of (N,2)
+        H (int): image height
+        W (int): image width
+
+    Returns:
+        list: a bbox of [cx,cy,w,h]
+    """
+    pts = np.array(pts).reshape(-1,2)
+    xs,ys = pts[:,0],pts[:,1]
+    x0,y0 = min(xs),min(ys)
+    x2,y2 = max(xs),max(ys)
+    # get box h,w
+    w = x2 - x0
+    h = y2 - y0
+    # get bbox center
+    cx,cy = (x0+x2)/2, (y0+y2)/2
+    # normalize to [0-1]
+    return [cx/W, cy/H, w/W, h/H]
 
 
-def convert_to_txt(fname_to_shapes, target_classes:list, is_seg=False, is_convert=False, obb=False):
+def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=False, obb=False, group_box=False):
     """
     convert the map <fname, list of shape objects> to YOLO format
     Arguments:
@@ -114,15 +139,43 @@ def convert_to_txt(fname_to_shapes, target_classes:list, is_seg=False, is_conver
                     rows.append(row)
                 elif is_convert:
                     # mask-to-bbox
-                    x0,y0 = min(shape.X),min(shape.Y)
-                    x2,y2 = max(shape.X),max(shape.Y)
-                    w = x2 - x0
-                    h = y2 - y0
-                    cx,cy = (x0+x2)/2, (y0+y2)/2
-                    row = [class_name, cx/W, cy/H, w/W, h/H]
+                    pts = [[x,y] for x,y in zip(shape.X,shape.Y)]
+                    xywh = pts_to_bbox(pts,H,W)
+                    row = [class_name]+xywh
                     rows.append(row)
                 else:
                     ignore_cls.add(class_name)
+            elif isinstance(shape, Brush):
+                mask = shape.to_mask((H,W))
+                mask = mask.astype(np.uint8)*255
+                # extract EXTERNAL vertices of a binary mask
+                contours,hierarchy = cv2.findContours(mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+                # generate independent labels for each disconnected contour unless using group_box
+                x0,y0,x2,y2 = np.inf,np.inf,-np.inf,-np.inf
+                for c in contours:
+                    c = c.reshape(-1,2)
+                    if group_box:
+                        xs,ys = c[:,0],c[:,1]
+                        x0 = min(min(xs),x0)
+                        y0 = min(min(ys),y0)
+                        x2 = max(max(xs),x2)
+                        y2 = max(max(ys),y2)
+                    elif is_seg:
+                        xyxy = []
+                        for x,y in c:
+                            xyxy += [x/W, y/H]
+                        row = [class_name] + xyxy
+                        rows.append(row)
+                    elif is_convert:
+                        # mask-to-bbox
+                        xywh = pts_to_bbox(c,H,W)
+                        row = [class_name]+xywh
+                        rows.append(row)
+                    else:
+                        ignore_cls.add(class_name)
+                if group_box:
+                    xywh = pts_to_bbox([[x0,y0],[x2,y2]],H,W)
+                    rows.append([class_name]+xywh)                    
             elif isinstance(shape, Keypoint):
                 x,y = shape.x, shape.y
                 row = [x/W, y/H]
@@ -226,6 +279,7 @@ if __name__ =='__main__':
     ap.add_argument('--convert', action='store_true', help='convert label formats: bbox-to-mask if "--seg" is enabled, otherwise mask-to-bbox')
     ap.add_argument('--bg', action='store_true', help='save images with no labels, where yolo models treat them as background')
     ap.add_argument('--obb', action='store_true', help='support for oriented bounding box support')
+    ap.add_argument('--group_box', action='store_true', help='group multiple instances of same class boxes into one. Brush labels only!')
     args = vars(ap.parse_args())
 
     path_imgs = args['path_imgs']
@@ -254,7 +308,7 @@ if __name__ =='__main__':
         if cls not in class_to_id:
             raise Exception(f'Not found target class: {cls}')
     
-    fname_to_rows,ignore_cls,n_pts = convert_to_txt(fname_to_shapes, target_classes, is_seg, is_convert, args['obb'])
+    fname_to_rows,ignore_cls,n_pts = convert_to_txt(fname_to_shapes, target_classes, is_seg, is_convert, args['obb'], args['group_box'])
 
     # modify class_to_id
     keys = class_to_id.keys()

@@ -31,3 +31,16 @@ class Brush(Shape):
         self.X = list(map(round,self.X))
         self.Y = list(map(round,self.Y))
     
+    def to_mask(self,hw):
+        """convert to a binary mask
+
+        Args:
+            hw (list): a list of h and w
+
+        Returns:
+            np.ndarray: a binary mask
+        """
+        mask = np.zeros(hw,dtype=bool)
+        self.round()
+        mask[self.Y,self.X] = True
+        return mask
