@@ -5,7 +5,7 @@ import numpy as np
 import logging
 
 #LMI packages
-from label_utils.shapes import Rect, Mask, Keypoint
+from label_utils.shapes import Rect, Mask, Keypoint, Brush
 from label_utils.csv_utils import load_csv, write_to_csv
 from gadget_utils.pipeline_utils import fit_array_to_size
 from system_utils.path_utils import get_relative_paths
@@ -58,10 +58,8 @@ def pad_image_with_csv(input_path, csv_path, output_path, output_imsize, save_bg
 
         #pad shapes
         shapes = fname_to_shape[im_name]
-        #logger.info('before: ',[s.up_left+s.bottom_right for s in shapes])
-        shapes = fit_shapes_to_size(shapes, pad_l, pad_t)
-        shapes,is_warning = chop_shapes(shapes, W, H)
-        #logger.info('after: ',[s.up_left+s.bottom_right for s in shapes])
+        fit_shapes_to_size(shapes, pad_l, pad_t)
+        shapes,is_warning = clip_shapes(shapes, W, H)
         if is_warning:
             cnt_warnings += 1
 
@@ -77,7 +75,7 @@ def pad_image_with_csv(input_path, csv_path, output_path, output_imsize, save_bg
     write_to_csv(output_shapes, output_csv, overwrite=not append_to_csv)
     
 
-def chop_shapes(shapes, W, H):
+def clip_shapes(shapes, W, H):
     """
     description:
         clip the shapes so that they are fit in the target size [W,H]
@@ -99,7 +97,7 @@ def chop_shapes(shapes, W, H):
                     or (np.any(new_box==0) and np.all(box!=0)):
                 logger.warning(f'bbox {box} is chopped to fit the size [{W}, {H}]')
                 is_warning = True
-        elif isinstance(shape, Mask):
+        elif isinstance(shape, (Mask,Brush)):
             X,Y = np.array(shape.X), np.array(shape.Y)
             new_X = np.clip(X, a_min=0, a_max=W)
             new_Y = np.clip(Y, a_min=0, a_max=H)
@@ -127,7 +125,7 @@ def chop_shapes(shapes, W, H):
 def fit_shapes_to_size(shapes, pad_l, pad_t):
     """
     description:
-        add the left and top paddings to the shapes
+        add the left and top paddings to the shapes, modify in-place
     arguments:
         shapes(list): a list of Shape objects (Rect or Mask)
         pad_l(int): the left paddings
@@ -139,13 +137,12 @@ def fit_shapes_to_size(shapes, pad_l, pad_t):
             shape.up_left[1] += pad_t
             shape.bottom_right[0] += pad_l
             shape.bottom_right[1] += pad_t
-        elif isinstance(shape, Mask):
+        elif isinstance(shape, (Mask,Brush)):
             shape.X = [v+pad_l for v in shape.X]
             shape.Y = [v+pad_t for v in shape.Y]
         elif isinstance(shape, Keypoint):
             shape.x += pad_l
             shape.y += pad_t
-    return shapes
     
 
 

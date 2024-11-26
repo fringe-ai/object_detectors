@@ -301,12 +301,12 @@ if __name__ =='__main__':
         fname_to_shapes,class_to_id = load_csv(path_csv, path_imgs, zero_index=True)
     
     if len(target_classes)==1 and target_classes[0]=='all':
-        target_classes = [cls for cls in class_to_id]
+        target_classes = [c for c in class_to_id]
     elif class_map_file:
         raise Exception('target_classes must be "all" when class_map_file is provided')
-    for cls in target_classes:
-        if cls not in class_to_id:
-            raise Exception(f'Not found target class: {cls}')
+    for c in target_classes:
+        if c not in class_to_id:
+            raise Exception(f'Not found target class: {c}')
     
     fname_to_rows,ignore_cls,n_pts = convert_to_txt(fname_to_shapes, target_classes, is_seg, is_convert, args['obb'], args['group_box'])
 

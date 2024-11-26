@@ -6,13 +6,51 @@ import numpy as np
 
 #LMI packages
 from label_utils import csv_utils
-from label_utils.shapes import Rect, Mask, Keypoint
+from label_utils.shapes import Rect, Mask, Keypoint, Brush
 from system_utils.path_utils import get_relative_paths
 
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def flip_shapes(shapes,is_flip,hw):
+    """flip shapes in-place
+
+    Args:
+        shapes (list): a list of Shape objects
+        is_flip (list): a list of bools: [flipx,flipy]
+        hw (list): a list of [h,w]
+    """
+    flipx,flipy = is_flip
+    h,w = hw
+    for shape in shapes:
+        if isinstance(shape, Rect):
+            x1,y1 = shape.up_left
+            x2,y2 = shape.bottom_right
+            if flipx:
+                x1 = w - x1
+                x2 = w - x2
+            if flipy:
+                y1 = h - y1
+                y2 = h - y2
+            shape.up_left = [min(x1,x2), min(y1,y2)]
+            shape.bottom_right = [max(x1,x2), max(y1,y2)]
+        elif isinstance(shape, (Mask,Brush)):
+            xs = shape.X
+            ys = shape.Y
+            if flipx:
+                xs = [w-x for x in xs]
+            if flipy:
+                ys = [h-y for y in ys]
+            shape.X = xs
+            shape.Y = ys
+        elif isinstance(shape, Keypoint):
+            if flipx:
+                shape.x = w-shape.x
+            if flipy:
+                shape.y = h-shape.y
 
 
 def flip_imgs_with_csv(path_imgs, path_csv, flip, path_out, save_bg_images, recursive):
@@ -27,7 +65,7 @@ def flip_imgs_with_csv(path_imgs, path_csv, flip, path_out, save_bg_images, recu
         shapes(dict): the map <original image name, a list of shape objects>, where shape objects are annotations
     """
     
-    shapes,_ = csv_utils.load_csv(path_csv, path_img=path_imgs)
+    fname_shapes,_ = csv_utils.load_csv(path_csv, path_img=path_imgs)
     cnt_bg = 0
     files = get_relative_paths(path_imgs, recursive)
     for f in files:
@@ -36,7 +74,7 @@ def flip_imgs_with_csv(path_imgs, path_csv, flip, path_out, save_bg_images, recu
         h,w = im.shape[:2]
         
         # found bg image
-        if im_name not in shapes:
+        if im_name not in fname_shapes:
             if not save_bg_images:
                 continue
             cnt_bg += 1
@@ -58,36 +96,15 @@ def flip_imgs_with_csv(path_imgs, path_csv, flip, path_out, save_bg_images, recu
         logger.info(f'write to {out_name}')
         cv2.imwrite(os.path.join(path_out,out_name), im2)
         
-        for i in range(len(shapes[im_name])):
-            shapes[im_name][i].im_name = out_name
-            if isinstance(shapes[im_name][i], Rect):
-                x1,y1 = shapes[im_name][i].up_left
-                x2,y2 = shapes[im_name][i].bottom_right
-                if flipx:
-                    x1 = w - x1
-                    x2 = w - x2
-                if flipy:
-                    y1 = h - y1
-                    y2 = h - y2
-                shapes[im_name][i].up_left = [min(x1,x2), min(y1,y2)]
-                shapes[im_name][i].bottom_right = [max(x1,x2), max(y1,y2)]
-            elif isinstance(shapes[im_name][i], Mask):
-                xs = shapes[im_name][i].X
-                ys = shapes[im_name][i].Y
-                if flipx:
-                    xs = [w-x for x in xs]
-                if flipy:
-                    ys = [h-y for y in ys]
-                shapes[im_name][i].X = xs
-                shapes[im_name][i].Y = ys
-            elif isinstance(shapes[im_name][i], Keypoint):
-                if flipx:
-                    shapes[im_name][i].x = w-shapes[im_name][i].x
-                if flipy:
-                    shapes[im_name][i].y = h-shapes[im_name][i].y
+        # flip shapes
+        shapes = fname_shapes[im_name]
+        flip_shapes(shapes,[flipx,flipy],[h,w])
+        for shape in shapes:
+            shape.im_name = out_name
+            
     if cnt_bg:
         logger.info(f'found {cnt_bg} images with no labels. These images will be used as background training data in YOLO')
-    return shapes
+    return fname_shapes
 
 
 
