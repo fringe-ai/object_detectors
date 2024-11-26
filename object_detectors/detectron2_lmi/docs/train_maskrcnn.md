@@ -166,11 +166,31 @@ services:
 
 A LMI formated csv file with all predictions is automatically saved in the the the output folder defined in the docker compose file.
 
+### Convert to TensorRT
 
+To convert to tensorrt a `sample_image.png` is required to be in folder where the weights are stored. The image should be of size thats divizeable by 32. The imagesize should be defined in the config.yaml file shown above for training.
 
+*Default batch size is 1 although batchsize can be changed to any batchsize*
 
-
-
-
-
-
+```yaml
+services:
+  detectron2_lmi:
+    container_name: detectron2_lmi
+    build:
+      context: .
+      dockerfile: dockerfile
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - 6006:6006 # tensorboard
+    volumes:
+      - ./training/maskrcnn/2024-09-22-v2/:/home/weights   # weights
+    command: >
+      bash -c "source /home/LMI_AI_Solutions/lmi_ai.env && python3 /home/LMI_AI_Solutions/object_detectors/detectron2_lmi/convert.py -b 1 --fp16"
+```
