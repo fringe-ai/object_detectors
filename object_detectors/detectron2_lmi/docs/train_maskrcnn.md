@@ -96,7 +96,7 @@ RUN pip install onnx-graphsurgeon onnxruntime
 
 #### Train
 
-example docker-compose.yaml file to start a training job
+Example docker-compose.yaml file to start a training job
 
 ```yaml
 version: "3.9"
