@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 from label_utils.csv_utils import load_csv
 from PIL import Image, ImageDraw
 import shutil
-import pycocotools
+import pycocotools.mask
 
 class Dataset(object):
     """
