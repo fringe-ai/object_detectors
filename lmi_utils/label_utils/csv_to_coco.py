@@ -127,9 +127,9 @@ class Dataset(object):
                         brush[fname] = collections.defaultdict(list)
                     if row[4]=='x values':
                         if 'x' not in brush:
-                            brush[fname]['x'].append(row[5:])
+                            brush[fname]['x'].append(list(map(int,row[5:])))
                     if row[4]=='y values':
-                            brush[fname]['y'].append(row[5:])
+                            brush[fname]['y'].append(list(map(int,row[5:])))
                             brush[fname]['category'].append(row[1])
                             brush[fname]['iscrowd'].append(iscrowd)
                             brush[fname]['image_id'].append(self.imgfile2id[fname])
@@ -183,9 +183,6 @@ class Dataset(object):
                     dt = {}
                     # create a binary mask
                     binary_mask = np.zeros((self.image_metadata[im_id]['height'], self.image_metadata[im_id]['width']), dtype=np.uint8)
-                    print(binary_mask.shape)
-                    print(x)
-                    print(y)
                     x_pixels = np.array(x).astype(int)
                     y_pixels = np.array(y).astype(int)
                     binary_mask[y_pixels, x_pixels] = 1
