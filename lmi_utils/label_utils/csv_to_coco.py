@@ -200,6 +200,9 @@ class Dataset(object):
                     dt['bbox'] = [int(x_min),int(y_min),int(x_max-x_min),int(y_max-y_min)]
                     dt['category_id'] = dt_category[cat_str]
                     dt['id'] = self.anno_id
+                    # for testing
+                    print(json.dumps(dt))
+                    exit(0)
                     self.anno_id += 1
                     self.annotations.append(dt)
                     
@@ -226,8 +229,6 @@ class Dataset(object):
                 dt['category_id'] = dt_category[cat_str]
                 dt['id'] = self.anno_id
                 self.anno_id += 1
-                # for testing
-                print(json.dumps(dt))
                 self.annotations.append(dt)
 
     def get_json(self):
