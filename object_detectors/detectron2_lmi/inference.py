@@ -259,7 +259,7 @@ if __name__ == "__main__":
             )
             if 'segments' in outputs:
                 segments = outputs['segments'][i].astype(int)
-            results.append(Mask(im_name=fname, category=class_id, x_vals=segments[:,0].tolist(), y_vals=segments[:,1].tolist(), confidence=score))
+                results.append(Mask(im_name=fname, category=class_id, x_vals=segments[:,0].tolist(), y_vals=segments[:,1].tolist(), confidence=score))
         shapes[fname] = results
             
     write_to_csv(shapes, os.path.join(args.output_path, f"predictions.csv"), overwrite=True)
