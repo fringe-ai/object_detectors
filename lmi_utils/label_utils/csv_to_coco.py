@@ -6,13 +6,42 @@ import json
 import collections
 import numpy as np
 from shapely.geometry import Polygon
+from label_utils.csv_utils import load_csv
 from PIL import Image, ImageDraw
+import shutil
+import pycocotools
+
+def create_binary_mask(x_pixels, y_pixels, height, width):
+    """
+    Creates a binary image mask based on given x and y pixel locations using NumPy.
+
+    Parameters:
+        x_pixels (list or array-like): x-coordinates of pixels to mask (columns).
+        y_pixels (list or array-like): y-coordinates of pixels to mask (rows).
+        height (int): Height of the image (number of rows).
+        width (int): Width of the image (number of columns).
+
+    Returns:
+        np.ndarray: A binary image mask of shape (height, width).
+    """
+    mask = np.zeros((height, width), dtype=np.uint8)
+    
+    x_pixels = np.array(x_pixels)
+    y_pixels = np.array(y_pixels)
+    
+    valid_indices = (x_pixels >= 0) & (x_pixels < width) & (y_pixels >= 0) & (y_pixels < height)
+    x_pixels = x_pixels[valid_indices]
+    y_pixels = y_pixels[valid_indices]
+    
+    mask[y_pixels, x_pixels] = 1
+
+    return mask
 
 class Dataset(object):
     """
     create a coco format dataset from csv file
     """
-    def __init__(self, path_pngs:str, path_csv:str, dt_category:dict, super_category:dict, json_out_path, plot=True):
+    def __init__(self, path_pngs:str, path_csv:str, plot=True):
         super().__init__()
         self.info = {
             "description": "Custom Dataset",
@@ -25,12 +54,26 @@ class Dataset(object):
         self.fname_to_fullpath = {}
         self.im_id = 1
         self.anno_id = 1
+        
+        shapes, _ = self.csv_annotations = load_csv(
+            fname=path_csv,
+            path_img=path_imgs
+        )
+        self.image_metadata = {}
+        # generate the categories
+        class_map = {}
+        idx = 1 # 0 is reserved
+        for k , v in shapes.items():
+            for s in v:
+                if s.category not in class_map:
+                    class_map[s.category] = idx
+                    idx += 1
 
         #func
-        self.add_categories(dt_category, super_category)
+        self.add_categories(class_map)
         self.add_imgs(path_pngs)
-        self.add_annotations(path_csv, dt_category, plot)
-        self.write_to_json(json_out_path)
+        self.add_annotations(path_csv, class_map, plot)
+        # self.write_to_json(json_out_path)
 
 
     def add_categories(self, dt_category, super_category={}):
@@ -55,6 +98,7 @@ class Dataset(object):
             path_imgs(str): the path to image folder
         """
         files = glob.glob(os.path.join(path_imgs,'*.png'))
+        files += glob.glob(os.path.join(path_imgs,'*.jpg'))
         for f in files:
             dt = {}
             im = cv2.imread(f)
@@ -65,6 +109,10 @@ class Dataset(object):
             dt['height'] = h
             dt['width'] = w
             dt['id'] = self.im_id
+            self.image_metadata[self.im_id] = {
+                'height': h,
+                'width': w
+            }
             self.imgfile2id[fname] = self.im_id
             self.im_id += 1
             self.images.append(dt)
@@ -81,6 +129,7 @@ class Dataset(object):
         """
         masks = {}
         rects = {}
+        brush = {}
         #read annotations from csv file
         with open(path_csv, newline='') as csvfile:
             reader = csv.reader(csvfile, delimiter=';')
@@ -97,6 +146,20 @@ class Dataset(object):
                             masks[fname]['category'].append(row[1])
                             masks[fname]['iscrowd'].append(iscrowd)
                             masks[fname]['image_id'].append(self.imgfile2id[fname])
+                
+                elif row[3]=='brush':
+                    fname = row[0]
+                    if fname not in brush:
+                        brush[fname] = collections.defaultdict(list)
+                    if row[4]=='x values':
+                        if 'x' not in brush:
+                            brush[fname]['x'].append(row[5:])
+                    if row[4]=='y values':
+                            brush[fname]['y'].append(row[5:])
+                            brush[fname]['category'].append(row[1])
+                            brush[fname]['iscrowd'].append(iscrowd)
+                            brush[fname]['image_id'].append(self.imgfile2id[fname])
+                            
                 elif row[3]=='rect':
                     if fname not in rects:
                         rects[fname] = collections.defaultdict(list)
@@ -109,31 +172,57 @@ class Dataset(object):
                         rects[fname]['iscrowd'].append(iscrowd)
                         rects[fname]['image_id'].append(self.imgfile2id[fname])
         #generate coco annotations
-        for fname in masks:
-            mask = masks[fname]
-            for x,y,cat_str,im_id,iscrowd in zip(mask['x'],mask['y'],mask['category'],mask['image_id'],mask['iscrowd']):
-                #skip if category not in dictionary
-                if cat_str not in dt_category:
-                    continue
-                
-                dt = {}
-                vertex = [int(v) for pt in zip(x,y) for v in pt] #(x1,y1,x2,y2)
-                poly = Polygon([(int(xi),int(yi)) for xi,yi in zip(x,y)])
+        if masks != {}:
+            for fname in masks:
+                mask = masks[fname]
+                for x,y,cat_str,im_id,iscrowd in zip(mask['x'],mask['y'],mask['category'],mask['image_id'],mask['iscrowd']):
+                    #skip if category not in dictionary
+                    if cat_str not in dt_category:
+                        continue
+                    
+                    dt = {}
+                    vertex = [int(v) for pt in zip(x,y) for v in pt] #(x1,y1,x2,y2)
+                    poly = Polygon([(int(xi),int(yi)) for xi,yi in zip(x,y)])
 
-                if plot:
-                    self.visualize(poly,fname)
+                    if plot:
+                        self.visualize(poly,fname)
 
-                x_min,y_min,x_max,y_max = poly.bounds
-                dt['segmentation'] = [vertex]
-                dt['area'] = poly.area
-                dt['iscrowd'] = iscrowd
-                dt['image_id'] = im_id
-                dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
-                dt['category_id'] = dt_category[cat_str]
-                dt['id'] = self.anno_id
-                self.anno_id += 1
-                self.annotations.append(dt)
-
+                    x_min,y_min,x_max,y_max = poly.bounds
+                    dt['segmentation'] = [vertex]
+                    dt['area'] = poly.area
+                    dt['iscrowd'] = iscrowd
+                    dt['image_id'] = im_id
+                    dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
+                    dt['category_id'] = dt_category[cat_str]
+                    dt['id'] = self.anno_id
+                    self.anno_id += 1
+                    self.annotations.append(dt)
+        
+        if brush != {}:
+            for fname in brush:
+                brush_m = brush[fname]
+                for x,y,cat_str,im_id,iscrowd in zip(brush_m['x'],brush_m['y'],brush_m['category'],brush_m['image_id'],brush_m['iscrowd']):
+                    #skip if category not in dictionary
+                    if cat_str not in dt_category:
+                        continue
+                    
+                    dt = {}
+                    # create a binary mask
+                    binary_mask = create_binary_mask(x_pixels=x, y_pixels=y, height=self.image_metadata[im_id]['height'], width=self.image_metadata[im_id]['width'])
+                    brush_mask = pycocotools.mask.encode(binary_mask.astype(np.uint8, order="F"))
+                    x_min = np.min(x)
+                    y_min = np.min(y)
+                    x_max = np.max(x)
+                    y_max = np.max(y)
+                    
+                    dt['segmentation'] = brush_mask
+                    dt['area'] = (x_max-x_min)*(y_max-y_min)
+                    dt['iscrowd'] = iscrowd
+                    dt['image_id'] = im_id
+                    dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
+                    dt['category_id'] = dt_category[cat_str]
+                    dt['id'] = self.anno_id
+                    
         for fname in rects:
             rect = rects[fname]
             for bbox,cat_str,im_id,iscrowd in zip(rect['bbox'],rect['category'],rect['image_id'],rect['iscrowd']):
@@ -159,7 +248,14 @@ class Dataset(object):
                 self.anno_id += 1
                 self.annotations.append(dt)
 
-
+    def get_json(self):
+        return json.dumps({
+            'info': self.info, 'licenses': self.licenses, 
+            'images': self.images, 'annotations': self.annotations,
+            'categories': self.categories
+        })
+    
+    
     def write_to_json(self, json_out_path):
         """
         write the whole dataset to coco json format
@@ -196,27 +292,63 @@ class Dataset(object):
         im[~mask] *= 0.25
         cv2.imshow('plot',im.astype(np.uint8))
         cv2.waitKey(100)
-                
+        
+    
+def copy_images_in_folder(path_img, path_out, fnames=None):
+    """
+    copy the images from one folder to another
+    Arguments:
+        path_img(str): the path of original image folder
+        path_out(str): the path of output folder
+    """
+    os.makedirs(path_out, exist_ok=True)
+    if not fnames:
+        l = glob.glob(os.path.join(path_img, '*.png')) + glob.glob(os.path.join(path_img, '*.jpg'))
+    else:
+        l = [f"{path_img}/{fname}" for fname in fnames]
+    for f in l:
+        shutil.copy(f, path_out)
 
 if __name__ == '__main__':
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument('--path_imgs', required=True, help='the path to the images')
     ap.add_argument('--path_csv', default='labels.csv', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.csv" in path_imgs')
-    ap.add_argument('--classes', required=True, help='the class categories in the dataset using comma to separate each category')
-    ap.add_argument('--output_json', required=True, help='the path to the output json file')
+    ap.add_argument('--path_out', required=True, help='the directory path to store the results')
     ap.add_argument('--plot', action='store_true', help='plot the annotations')
     args = vars(ap.parse_args())
 
     path_imgs = args['path_imgs']
     path_csv = args['path_csv'] if args['path_csv']!='labels.csv' else os.path.join(path_imgs, args['path_csv'])
+    path_out = args['path_out']
     if not os.path.isfile(path_csv):
         raise Exception(f'Not found file: {path_csv}')
-
-    #create a dictionary in this format: {'up':1, 'down':2}
-    id = 1
-    category = {}
-    for cat in args['classes'].split(','):
-        category[cat] = id
-        id+=1
-    Dataset(path_imgs, path_csv, dt_category=category, super_category={}, json_out_path=args['output_json'], plot=args['plot'])
+    
+    data = Dataset(path_imgs, path_csv, plot=args['plot'])
+    
+    # write the images to the given directory
+    
+    if not os.path.exists(path_out):
+        os.makedirs(
+            path_out
+        )
+    
+    # write the json file to the directory
+    data.write_to_json(
+        json_out_path=os.path.join(path_out, 'annotations.json')
+    )
+    images_path = os.path.join(
+        path_out,'images'
+    )
+    if not os.path.exists(images_path):
+        os.makedirs(
+            images_path
+        )
+    # move the images to the folder
+    
+    copy_images_in_folder(
+        path_img=path_imgs,
+        path_out=images_path
+    )
+    
+    
