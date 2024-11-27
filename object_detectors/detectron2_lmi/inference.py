@@ -257,7 +257,8 @@ if __name__ == "__main__":
             results.append(
                 Rect(im_name=fname, category=class_id, up_left=box[:2].astype(int).tolist(), bottom_right=box[2:].astype(int).tolist(), confidence=score, angle=0)
             )
-            segments = outputs['segments'][i].astype(int)
+            if segments in outputs:
+                segments = outputs['segments'][i].astype(int)
             results.append(Mask(im_name=fname, category=class_id, x_vals=segments[:,0].tolist(), y_vals=segments[:,1].tolist(), confidence=score))
         shapes[fname] = results
             
