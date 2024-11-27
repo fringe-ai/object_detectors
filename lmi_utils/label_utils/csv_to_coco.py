@@ -226,6 +226,8 @@ class Dataset(object):
                 dt['category_id'] = dt_category[cat_str]
                 dt['id'] = self.anno_id
                 self.anno_id += 1
+                # for testing
+                print(json.dumps(dt))
                 self.annotations.append(dt)
 
     def get_json(self):
