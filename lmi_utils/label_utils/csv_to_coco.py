@@ -188,12 +188,12 @@ class Dataset(object):
                     binary_mask[y_pixels, x_pixels] = 1
                     
                     
-                    brush_mask = pycocotools.mask.encode(binary_mask.astype(np.uint8, order="F"))
+                    brush_mask = pycocotools.mask.encode(np.asfortranarray(binary_mask.astype(np.uint8)))
                     x_min = np.min(x)
                     y_min = np.min(y)
                     x_max = np.max(x)
                     y_max = np.max(y)
-                    
+                    brush_mask['counts'] = brush_mask['counts'].decode('utf-8')
                     dt['segmentation'] = brush_mask
                     dt['area'] = (x_max-x_min)*(y_max-y_min)
                     dt['iscrowd'] = iscrowd
