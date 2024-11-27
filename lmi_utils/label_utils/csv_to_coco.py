@@ -201,6 +201,7 @@ class Dataset(object):
                     dt['category_id'] = dt_category[cat_str]
                     dt['id'] = self.anno_id
                     # for testing
+                    print(dt)
                     print(json.dumps(dt))
                     exit(0)
                     self.anno_id += 1
