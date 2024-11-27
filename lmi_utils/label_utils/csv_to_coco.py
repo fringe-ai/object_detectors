@@ -183,6 +183,9 @@ class Dataset(object):
                     dt = {}
                     # create a binary mask
                     binary_mask = np.zeros((self.image_metadata[im_id]['height'], self.image_metadata[im_id]['width']), dtype=np.uint8)
+                    print(binary_mask.shape)
+                    print(x)
+                    print(y)
                     x_pixels = np.array(x).astype(int)
                     y_pixels = np.array(y).astype(int)
                     binary_mask[y_pixels, x_pixels] = 1
