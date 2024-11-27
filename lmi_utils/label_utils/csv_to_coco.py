@@ -11,32 +11,6 @@ from PIL import Image, ImageDraw
 import shutil
 import pycocotools
 
-def create_binary_mask(x_pixels, y_pixels, height, width):
-    """
-    Creates a binary image mask based on given x and y pixel locations using NumPy.
-
-    Parameters:
-        x_pixels (list or array-like): x-coordinates of pixels to mask (columns).
-        y_pixels (list or array-like): y-coordinates of pixels to mask (rows).
-        height (int): Height of the image (number of rows).
-        width (int): Width of the image (number of columns).
-
-    Returns:
-        np.ndarray: A binary image mask of shape (height, width).
-    """
-    mask = np.zeros((height, width), dtype=np.uint8)
-    
-    x_pixels = np.array(x_pixels)
-    y_pixels = np.array(y_pixels)
-    
-    valid_indices = (x_pixels >= 0) & (x_pixels < width) & (y_pixels >= 0) & (y_pixels < height)
-    x_pixels = x_pixels[valid_indices]
-    y_pixels = y_pixels[valid_indices]
-    
-    mask[y_pixels, x_pixels] = 1
-
-    return mask
-
 class Dataset(object):
     """
     create a coco format dataset from csv file
@@ -208,7 +182,12 @@ class Dataset(object):
                     
                     dt = {}
                     # create a binary mask
-                    binary_mask = create_binary_mask(x_pixels=x, y_pixels=y, height=self.image_metadata[im_id]['height'], width=self.image_metadata[im_id]['width'])
+                    binary_mask = np.zeros((self.image_metadata[im_id]['height'], self.image_metadata[im_id]['width']), dtype=np.uint8)
+                    x_pixels = np.array(x).astype(int)
+                    y_pixels = np.array(y).astype(int)
+                    binary_mask[y_pixels, x_pixels] = 1
+                    
+                    
                     brush_mask = pycocotools.mask.encode(binary_mask.astype(np.uint8, order="F"))
                     x_min = np.min(x)
                     y_min = np.min(y)
