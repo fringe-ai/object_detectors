@@ -191,13 +191,13 @@ class Dataset(object):
                     y_min = np.min(y)
                     x_max = np.max(x)
                     y_max = np.max(y)
-                    brush_mask['counts'] = brush_mask['counts'].decode('utf-8')
-                    print(brush_mask)
+                    brush_mask['counts'] = brush_mask['counts']
+                    brush_mask['size'] = [int(dim) for dim in brush_mask['size']]
                     dt['segmentation'] = brush_mask
                     dt['area'] = (x_max-x_min)*(y_max-y_min)
                     dt['iscrowd'] = iscrowd
                     dt['image_id'] = im_id
-                    dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
+                    dt['bbox'] = [int(x_min),int(y_min),int(x_max-x_min),int(y_max-y_min)]
                     dt['category_id'] = dt_category[cat_str]
                     dt['id'] = self.anno_id
                     self.anno_id += 1
