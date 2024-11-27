@@ -201,6 +201,8 @@ class Dataset(object):
                     dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
                     dt['category_id'] = dt_category[cat_str]
                     dt['id'] = self.anno_id
+                    self.anno_id += 1
+                    self.annotations.append(dt)
                     
         for fname in rects:
             rect = rects[fname]
