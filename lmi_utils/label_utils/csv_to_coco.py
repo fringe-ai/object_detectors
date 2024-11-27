@@ -9,6 +9,37 @@ from shapely.geometry import Polygon
 from label_utils.csv_utils import load_csv
 from PIL import Image, ImageDraw
 import shutil
+import pycocotools
+
+def create_binary_mask(x_pixels, y_pixels, height, width):
+    """
+    Creates a binary image mask based on given x and y pixel locations using NumPy.
+
+    Parameters:
+        x_pixels (list or array-like): x-coordinates of pixels to mask (columns).
+        y_pixels (list or array-like): y-coordinates of pixels to mask (rows).
+        height (int): Height of the image (number of rows).
+        width (int): Width of the image (number of columns).
+
+    Returns:
+        np.ndarray: A binary image mask of shape (height, width).
+    """
+    # Initialize a binary mask with zeros
+    mask = np.zeros((height, width), dtype=np.uint8)
+    
+    # Convert input coordinates to NumPy arrays
+    x_pixels = np.array(x_pixels)
+    y_pixels = np.array(y_pixels)
+    
+    # Filter out coordinates that are out of bounds
+    valid_indices = (x_pixels >= 0) & (x_pixels < width) & (y_pixels >= 0) & (y_pixels < height)
+    x_pixels = x_pixels[valid_indices]
+    y_pixels = y_pixels[valid_indices]
+    
+    # Use NumPy advanced indexing to set the mask
+    mask[y_pixels, x_pixels] = 1
+
+    return mask
 
 class Dataset(object):
     """
@@ -32,7 +63,7 @@ class Dataset(object):
             fname=path_csv,
             path_img=path_imgs
         )
-        
+        self.image_metadata = {}
         # generate the categories
         class_map = {}
         idx = 1 # 0 is reserved
@@ -82,6 +113,10 @@ class Dataset(object):
             dt['height'] = h
             dt['width'] = w
             dt['id'] = self.im_id
+            self.image_metadata[self.im_id] = {
+                'height': h,
+                'width': w
+            }
             self.imgfile2id[fname] = self.im_id
             self.im_id += 1
             self.images.append(dt)
@@ -98,6 +133,7 @@ class Dataset(object):
         """
         masks = {}
         rects = {}
+        brush = {}
         #read annotations from csv file
         with open(path_csv, newline='') as csvfile:
             reader = csv.reader(csvfile, delimiter=';')
@@ -114,6 +150,19 @@ class Dataset(object):
                             masks[fname]['category'].append(row[1])
                             masks[fname]['iscrowd'].append(iscrowd)
                             masks[fname]['image_id'].append(self.imgfile2id[fname])
+                
+                elif row[3]=='brush':
+                    if fname not in brush:
+                        brush[fname] = collections.defaultdict(list)
+                    if row[4]=='x values':
+                        if 'x' not in brush:
+                            brush[fname]['x'].append(row[5:])
+                    if row[4]=='y values':
+                            brush[fname]['y'].append(row[5:])
+                            brush[fname]['category'].append(row[1])
+                            brush[fname]['iscrowd'].append(iscrowd)
+                            brush[fname]['image_id'].append(self.imgfile2id[fname])
+                            
                 elif row[3]=='rect':
                     if fname not in rects:
                         rects[fname] = collections.defaultdict(list)
@@ -126,30 +175,56 @@ class Dataset(object):
                         rects[fname]['iscrowd'].append(iscrowd)
                         rects[fname]['image_id'].append(self.imgfile2id[fname])
         #generate coco annotations
-        for fname in masks:
-            mask = masks[fname]
-            for x,y,cat_str,im_id,iscrowd in zip(mask['x'],mask['y'],mask['category'],mask['image_id'],mask['iscrowd']):
-                #skip if category not in dictionary
-                if cat_str not in dt_category:
-                    continue
-                
-                dt = {}
-                vertex = [int(v) for pt in zip(x,y) for v in pt] #(x1,y1,x2,y2)
-                poly = Polygon([(int(xi),int(yi)) for xi,yi in zip(x,y)])
+        if masks != {}:
+            for fname in masks:
+                mask = masks[fname]
+                for x,y,cat_str,im_id,iscrowd in zip(mask['x'],mask['y'],mask['category'],mask['image_id'],mask['iscrowd']):
+                    #skip if category not in dictionary
+                    if cat_str not in dt_category:
+                        continue
+                    
+                    dt = {}
+                    vertex = [int(v) for pt in zip(x,y) for v in pt] #(x1,y1,x2,y2)
+                    poly = Polygon([(int(xi),int(yi)) for xi,yi in zip(x,y)])
 
-                if plot:
-                    self.visualize(poly,fname)
+                    if plot:
+                        self.visualize(poly,fname)
 
-                x_min,y_min,x_max,y_max = poly.bounds
-                dt['segmentation'] = [vertex]
-                dt['area'] = poly.area
-                dt['iscrowd'] = iscrowd
-                dt['image_id'] = im_id
-                dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
-                dt['category_id'] = dt_category[cat_str]
-                dt['id'] = self.anno_id
-                self.anno_id += 1
-                self.annotations.append(dt)
+                    x_min,y_min,x_max,y_max = poly.bounds
+                    dt['segmentation'] = [vertex]
+                    dt['area'] = poly.area
+                    dt['iscrowd'] = iscrowd
+                    dt['image_id'] = im_id
+                    dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
+                    dt['category_id'] = dt_category[cat_str]
+                    dt['id'] = self.anno_id
+                    self.anno_id += 1
+                    self.annotations.append(dt)
+        if brush != {}:
+            for fname in brush:
+                mask = brush[fname]
+                for x,y,cat_str,im_id,iscrowd in zip(brush['x'],brush['y'],brush['category'],brush['image_id'],brush['iscrowd']):
+                    #skip if category not in dictionary
+                    if cat_str not in dt_category:
+                        continue
+                    
+                    dt = {}
+                    # create a binary mask
+                    binary_mask = create_binary_mask(x_pixels=x, y_pixels=y, height=self.image_metadata[im_id]['height'], width=self.image_metadata[im_id]['width'])
+                    brush_mask = pycocotools.mask.encode(mask.astype(np.uint8, order="F"))
+                    x_min = np.min(x)
+                    y_min = np.min(y)
+                    x_max = np.max(x)
+                    y_max = np.max(y)
+                    
+                    dt['segmentation'] = brush_mask
+                    dt['iscrowd'] = iscrowd
+                    dt['image_id'] = im_id
+                    dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min]
+                    dt['category_id'] = dt_category[cat_str]
+                    dt['id'] = self.anno_id
+                    
+                    
 
         for fname in rects:
             rect = rects[fname]
