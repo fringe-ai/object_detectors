@@ -6,6 +6,7 @@ from detectron2.utils.logger import setup_logger
 import sys
 import signal
 import yaml
+import glob
 
 logger = setup_logger()
 
@@ -39,6 +40,9 @@ def main(args):
     
     for dataset_name in cfg.DATASETS.TRAIN:
         register_datasets(dataset_dir=os.path.join(args.dataset_dir, f"{dataset_name}"), dataset_name=dataset_name)
+        if not os.isfile(os.path.join(cfg.OUTPUT_DIR, "sample_image.png")):
+            images_in_folder = glob.glob(os.path.join(args.dataset_dir, f'{dataset_name}/images/*'))
+            os.system(f"cp {os.path.join(args.dataset_dir, f'{dataset_name}/images/{os.path.basename(images_in_folder[0])}')} {cfg.OUTPUT_DIR}/sample_image.png")
         logger.info(f"registered dataset: {dataset_name}")
     
     if len(cfg.DATASETS.TEST) > 0:
