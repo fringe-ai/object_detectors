@@ -9,7 +9,33 @@ from shapely.geometry import Polygon
 from label_utils.csv_utils import load_csv
 from PIL import Image, ImageDraw
 import shutil
-import pycocotools.mask
+import pycocotools
+
+def create_binary_mask(x_pixels, y_pixels, height, width):
+    """
+    Creates a binary image mask based on given x and y pixel locations using NumPy.
+
+    Parameters:
+        x_pixels (list or array-like): x-coordinates of pixels to mask (columns).
+        y_pixels (list or array-like): y-coordinates of pixels to mask (rows).
+        height (int): Height of the image (number of rows).
+        width (int): Width of the image (number of columns).
+
+    Returns:
+        np.ndarray: A binary image mask of shape (height, width).
+    """
+    mask = np.zeros((height, width), dtype=np.uint8)
+    
+    x_pixels = np.array(x_pixels)
+    y_pixels = np.array(y_pixels)
+    
+    valid_indices = (x_pixels >= 0) & (x_pixels < width) & (y_pixels >= 0) & (y_pixels < height)
+    x_pixels = x_pixels[valid_indices]
+    y_pixels = y_pixels[valid_indices]
+    
+    mask[y_pixels, x_pixels] = 1
+
+    return mask
 
 class Dataset(object):
     """
@@ -122,14 +148,13 @@ class Dataset(object):
                             masks[fname]['image_id'].append(self.imgfile2id[fname])
                 
                 elif row[3]=='brush':
-                    fname = row[0]
                     if fname not in brush:
                         brush[fname] = collections.defaultdict(list)
                     if row[4]=='x values':
                         if 'x' not in brush:
-                            brush[fname]['x'].append(list(map(int,row[5:])))
+                            brush[fname]['x'].append(row[5:])
                     if row[4]=='y values':
-                            brush[fname]['y'].append(list(map(int,row[5:])))
+                            brush[fname]['y'].append(row[5:])
                             brush[fname]['category'].append(row[1])
                             brush[fname]['iscrowd'].append(iscrowd)
                             brush[fname]['image_id'].append(self.imgfile2id[fname])
@@ -182,28 +207,20 @@ class Dataset(object):
                     
                     dt = {}
                     # create a binary mask
-                    binary_mask = np.zeros((self.image_metadata[im_id]['height'], self.image_metadata[im_id]['width']), dtype=np.uint8)
-                    x_pixels = np.array(x).astype(int)
-                    y_pixels = np.array(y).astype(int)
-                    binary_mask[y_pixels, x_pixels] = 1
-                    brush_mask = pycocotools.mask.encode(np.asfortranarray(binary_mask.astype(np.uint8)))
+                    binary_mask = create_binary_mask(x_pixels=x, y_pixels=y, height=self.image_metadata[im_id]['height'], width=self.image_metadata[im_id]['width'])
+                    brush_mask = pycocotools.mask.encode(binary_mask.astype(np.uint8, order="F"))
                     x_min = np.min(x)
                     y_min = np.min(y)
                     x_max = np.max(x)
                     y_max = np.max(y)
-                    brush_mask['counts'] = brush_mask['counts'].decode('utf-8')
-                    brush_mask['size'] = [int(dim) for dim in brush_mask['size']]
+                    
                     dt['segmentation'] = brush_mask
-                    dt['area'] = int((x_max-x_min)*(y_max-y_min))
+                    dt['area'] = (x_max-x_min)*(y_max-y_min)
                     dt['iscrowd'] = iscrowd
                     dt['image_id'] = im_id
-                    dt['bbox'] = [int(x_min),int(y_min),int(x_max-x_min),int(y_max-y_min)]
-                    dt['category_id'] = int(dt_category[cat_str])
+                    dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min] # [x,y,w,h]
+                    dt['category_id'] = dt_category[cat_str]
                     dt['id'] = self.anno_id
-                    # for testing
-                    print(json.dumps(dt))
-                    self.anno_id += 1
-                    self.annotations.append(dt)
                     
         for fname in rects:
             rect = rects[fname]
