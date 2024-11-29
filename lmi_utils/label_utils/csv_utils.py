@@ -3,9 +3,14 @@ import csv
 import collections
 from logging import warning
 import os
+import logging
+
+logging.basicConfig()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 #LMI packages
-from label_utils.shapes import Rect, Mask, Keypoint
+from label_utils.shapes import Rect, Mask, Keypoint, Brush
 
 
 def load_csv(fname:str, path_img:str='', class_map:dict=None, zero_index:bool=True):
@@ -24,10 +29,10 @@ def load_csv(fname:str, path_img:str='', class_map:dict=None, zero_index:bool=Tr
     if class_map is None:
         new_map = True
         class_map = {}
-        id = 0 if zero_index else 1
+        idx = 0 if zero_index else 1
     else:
         new_map = False
-        id = max(class_map.values())+1
+        idx = max(class_map.values())+1
 
     with open(fname, newline='') as f:
         reader = csv.reader(f, delimiter=';')
@@ -53,8 +58,8 @@ def load_csv(fname:str, path_img:str='', class_map:dict=None, zero_index:bool=Tr
                     continue
                 else:
                     #warning(f'found new class in the {fname}: {category}, add to class_map')
-                    class_map[category] = id
-                    id += 1
+                    class_map[category] = idx
+                    idx += 1
             fullpath = os.path.join(path_img,im_name) if path_img else ''
             if shape_type=='polygon':
                 if coord_type=='x values':
@@ -66,6 +71,14 @@ def load_csv(fname:str, path_img:str='', class_map:dict=None, zero_index:bool=Tr
                     shapes[im_name].append(M)
                 else:
                     raise Exception(f"invalid keywords: {coord_type}")
+            elif shape_type=='brush':
+                if coord_type=='x values':
+                    B = Brush(im_name=im_name, fullpath=fullpath, category=category, confidence=confidence)
+                    B.X = list(map(float,coordinates))
+                elif coord_type=='y values':
+                    assert(im_name==B.im_name)
+                    B.Y = list(map(float,coordinates))
+                    shapes[im_name].append(B)
             elif shape_type=='rect':
                 if coord_type=='upper left':
                     R = Rect(im_name=im_name, fullpath=fullpath, category=category, confidence=confidence)
@@ -104,7 +117,7 @@ def write_to_csv(shapes:dict, filename:str, overwrite=True):
         writer = csv.writer(f, delimiter=';')
         for im_name in shapes:
             for shape in shapes[im_name]:
-                if not isinstance(shape, (Rect, Mask, Keypoint)):
+                if not isinstance(shape, (Rect, Mask, Keypoint, Brush)):
                     raise Exception(f"Found not supported class: {type(shape)}. Supported classes are Mask, Rect, Keypoint")
                 # round the coordinates and convert to list
                 shape.round()
@@ -117,6 +130,9 @@ def write_to_csv(shapes:dict, filename:str, overwrite=True):
                 elif isinstance(shape, Keypoint):
                     writer.writerow([shape.im_name, shape.category, f'{shape.confidence:.4f}', 'keypoint', 'x value', f'{shape.x}'])
                     writer.writerow([shape.im_name, shape.category, f'{shape.confidence:.4f}', 'keypoint', 'y value', f'{shape.y}'])
+                elif isinstance(shape, Brush):
+                    writer.writerow([shape.im_name, shape.category, f'{shape.confidence:.4f}', 'brush', 'x values'] + shape.X)
+                    writer.writerow([shape.im_name, shape.category, f'{shape.confidence:.4f}', 'brush', 'y values'] + shape.Y)
                     
 
 if __name__ == '__main__':
@@ -128,4 +144,4 @@ if __name__ == '__main__':
 
     shapes, class_map = load_csv(args.input)
     write_to_csv(shapes, args.output)
-    print(f'loaded {len(shapes)} shapes and saved to {args.output}')
+    logger.info(f'loaded {len(shapes)} shapes and saved to {args.output}')
