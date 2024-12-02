@@ -87,6 +87,7 @@ class Detectron2TRT(ModelBase):
         self.class_map = {
             int(k): str(v) for k, v in class_map.items()
         }
+        self.class_map_func = np.vectorize(lambda c: self.class_map.get(int(c), str(c)))
     
     def warmup(self):
         """
@@ -183,8 +184,8 @@ class Detectron2TRT(ModelBase):
         
         num_preds, boxes, scores, classes, masks = predictions[:5]
 
-        class_map = np.vectorize(lambda c: self.class_map.get(int(c), str(c)))
-        classes = class_map(classes)
+        
+        classes = self.class_map_func(classes)
         
         if len(boxes) > 0:
             scale_factors = np.array([image_w, image_h, image_w, image_h])
@@ -216,11 +217,16 @@ class Detectron2TRT(ModelBase):
                     mask_threshold
                 )
                 if kwargs.get("return_segments", False):
-                    batch_segments = [
-                        revert_to_origin(mask_to_polygon(
-                            mask
-                            ), operators) for mask in batch_masks
-                    ]
+                    if len(operators) > 0:
+                        batch_segments = [
+                            revert_to_origin(mask_to_polygon(
+                                mask
+                                ), operators) for mask in batch_masks
+                        ]
+                    else:
+                        batch_segments = [
+                            mask_to_polygon(mask) for mask in batch_masks
+                        ]
                     
             else:
                 batch_masks = filtered_masks
@@ -427,12 +433,16 @@ class Detectron2Torchscript(ModelBase):
                 batch_masks = output["pred_masks"][keep]
                 batch_masks = rescale_masks(batch_masks.to(self.device).squeeze(1), batch_boxes.to(self.device), (image_h,image_w,), mask_threshold)
                 if kwargs.get("return_segments", False):
-                    batch_segments = [
-                        revert_to_origin(mask_to_polygon(
-                            mask
-                            ), operators) for mask in batch_masks
-                    ]
-                    results["segments"].append(batch_segments)
+                    if len(operators) > 0:
+                        batch_segments = [
+                            revert_to_origin(mask_to_polygon(
+                                mask
+                                ), operators) for mask in batch_masks
+                        ]
+                    else:
+                        batch_segments = [
+                            mask_to_polygon(mask) for mask in batch_masks
+                        ]
             
             batch_boxes = revert_to_origin(batch_boxes, operators)
             results["boxes"].append(batch_boxes.cpu().numpy())
