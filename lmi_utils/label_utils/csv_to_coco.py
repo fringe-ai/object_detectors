@@ -11,37 +11,12 @@ from PIL import Image, ImageDraw
 import shutil
 import pycocotools
 
-def create_binary_mask(x_pixels, y_pixels, height, width):
-    """
-    Creates a binary image mask based on given x and y pixel locations using NumPy.
-
-    Parameters:
-        x_pixels (list or array-like): x-coordinates of pixels to mask (columns).
-        y_pixels (list or array-like): y-coordinates of pixels to mask (rows).
-        height (int): Height of the image (number of rows).
-        width (int): Width of the image (number of columns).
-
-    Returns:
-        np.ndarray: A binary image mask of shape (height, width).
-    """
-    mask = np.zeros((height, width), dtype=np.uint8)
-    
-    x_pixels = np.array(x_pixels)
-    y_pixels = np.array(y_pixels)
-    
-    valid_indices = (x_pixels >= 0) & (x_pixels < width) & (y_pixels >= 0) & (y_pixels < height)
-    x_pixels = x_pixels[valid_indices]
-    y_pixels = y_pixels[valid_indices]
-    
-    mask[y_pixels, x_pixels] = 1
-
-    return mask
 
 class Dataset(object):
     """
     create a coco format dataset from csv file
     """
-    def __init__(self, path_pngs:str, path_csv:str, plot=True):
+    def __init__(self, path_pngs:str, path_csv:str, plot=True, selected_classes=[]):
         super().__init__()
         self.info = {
             "description": "Custom Dataset",
@@ -63,11 +38,17 @@ class Dataset(object):
         # generate the categories
         class_map = {}
         idx = 1 # 0 is reserved
+        
         for k , v in shapes.items():
             for s in v:
                 if s.category not in class_map:
-                    class_map[s.category] = idx
-                    idx += 1
+                    ad = True
+                    if selected_classes != [] and s.category not in selected_classes:
+                        ad = False
+                    if ad:
+                        class_map[s.category] = idx
+                        idx += 1
+        
 
         #func
         self.add_categories(class_map)
@@ -135,6 +116,8 @@ class Dataset(object):
             reader = csv.reader(csvfile, delimiter=';')
             for row in reader:
                 fname = row[0]
+                if row[1] not in dt_category:
+                    continue
                 if row[3]=='polygon':
                     if fname not in masks:
                         masks[fname] = collections.defaultdict(list)
@@ -207,20 +190,26 @@ class Dataset(object):
                     
                     dt = {}
                     # create a binary mask
-                    binary_mask = create_binary_mask(x_pixels=x, y_pixels=y, height=self.image_metadata[im_id]['height'], width=self.image_metadata[im_id]['width'])
-                    brush_mask = pycocotools.mask.encode(binary_mask.astype(np.uint8, order="F"))
+                    binary_mask = np.zeros((self.image_metadata[im_id]['height'], self.image_metadata[im_id]['width']), dtype=np.uint8)
+                    x_pixels = np.array(x).astype(int)
+                    y_pixels = np.array(y).astype(int)
+                    binary_mask[y_pixels, x_pixels] = 1
+                    brush_mask = pycocotools.mask.encode(np.asfortranarray(binary_mask.astype(np.uint8)))
                     x_min = np.min(x)
                     y_min = np.min(y)
                     x_max = np.max(x)
                     y_max = np.max(y)
-                    
+                    brush_mask['counts'] = brush_mask['counts'].decode('utf-8')
+                    brush_mask['size'] = [int(dim) for dim in brush_mask['size']]
                     dt['segmentation'] = brush_mask
-                    dt['area'] = (x_max-x_min)*(y_max-y_min)
+                    dt['area'] = int((x_max-x_min)*(y_max-y_min))
                     dt['iscrowd'] = iscrowd
                     dt['image_id'] = im_id
-                    dt['bbox'] = [x_min,y_min,x_max-x_min,y_max-y_min] # [x,y,w,h]
-                    dt['category_id'] = dt_category[cat_str]
+                    dt['bbox'] = [int(x_min),int(y_min),int(x_max-x_min),int(y_max-y_min)]
+                    dt['category_id'] = int(dt_category[cat_str])
                     dt['id'] = self.anno_id
+                    self.anno_id += 1
+                    self.annotations.append(dt)
                     
         for fname in rects:
             rect = rects[fname]
@@ -315,6 +304,8 @@ if __name__ == '__main__':
     ap.add_argument('--path_csv', default='labels.csv', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.csv" in path_imgs')
     ap.add_argument('--path_out', required=True, help='the directory path to store the results')
     ap.add_argument('--plot', action='store_true', help='plot the annotations')
+    ap.add_argument('--classes', required=False, help='the class categories in the dataset using comma to separate each category')
+
     args = vars(ap.parse_args())
 
     path_imgs = args['path_imgs']
@@ -323,7 +314,7 @@ if __name__ == '__main__':
     if not os.path.isfile(path_csv):
         raise Exception(f'Not found file: {path_csv}')
     
-    data = Dataset(path_imgs, path_csv, plot=args['plot'])
+    data = Dataset(path_imgs, path_csv, plot=args['plot'], selected_classes=args['classes'].split(',').replace(' ','') if args['classes'] else [])
     
     # write the images to the given directory
     
