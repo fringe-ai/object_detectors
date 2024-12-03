@@ -1,23 +1,43 @@
-# Train and test YOLOv8 models
-This is the tutorial walking through how to train and test YOLOv8 models.
+# 📖 Yolo Models Tutorial
+This is the tutorial walking through how to train and test YOLOv8 or YOLO11 models. The instructions for both versions of models are the same. 
 
-## System requirements
-- Nvidia Drivers
+#### Supported Yolov8 Models:
+
+| Model       | Filenames                                                                                                      | Task                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| YOLOv8      | `yolov8n.pt` `yolov8s.pt` `yolov8m.pt` `yolov8l.pt` `yolov8x.pt`                                               | Detection              | 
+| YOLOv8-seg  | `yolov8n-seg.pt` `yolov8s-seg.pt` `yolov8m-seg.pt` `yolov8l-seg.pt` `yolov8x-seg.pt`                           | Instance Segmentation |
+| YOLOv8-pose | `yolov8n-pose.pt` `yolov8s-pose.pt` `yolov8m-pose.pt` `yolov8l-pose.pt` `yolov8x-pose.pt` `yolov8x-pose-p6.pt` | Pose/Keypoints           |
+| YOLOv8-obb  | `yolov8n-obb.pt` `yolov8s-obb.pt` `yolov8m-obb.pt` `yolov8l-obb.pt` `yolov8x-obb.pt`                           | Oriented Detection            |
+
+
+#### Supported Yolo11 Models:
+
+| Model       | Filenames                                                                                 | Task                                         | Inference | Validation | Training | Export |
+| ----------- | ----------------------------------------------------------------------------------------- | -------------------------------------------- | --------- | ---------- | -------- | ------ |
+| YOLO11      | `yolo11n.pt` `yolo11s.pt` `yolo11m.pt` `yolo11l.pt` `yolo11x.pt`                          | Detection            |
+| YOLO11-seg  | `yolo11n-seg.pt` `yolo11s-seg.pt` `yolo11m-seg.pt` `yolo11l-seg.pt` `yolo11x-seg.pt`      | Instance Segmentation |
+| YOLO11-pose | `yolo11n-pose.pt` `yolo11s-pose.pt` `yolo11m-pose.pt` `yolo11l-pose.pt` `yolo11x-pose.pt` | Pose/Keypoints       |
+| YOLO11-obb  | `yolo11n-obb.pt` `yolo11s-obb.pt` `yolo11m-obb.pt` `yolo11l-obb.pt` `yolo11x-obb.pt`      | Oriented Detection    |
+
+*For classification tasks please use [LMI_AI_Solutions/classifiers](https://github.com/lmitechnologies/LMI_AI_Solutions/tree/ais/classifiers)*
+
+## ⛭ System requirements
+- [Nvidia Drivers](https://www.nvidia.com/en-us/drivers/)
 - [Docker Engine](https://docs.docker.com/engine/install/ubuntu/)
 - [Nvidia Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 
-### Model training
-- X86
-- ubuntu OS
+#### Model training
+- x86
+- ubuntu OS or Windows
 - labeling tool
-  - [VGG Image Annotator](https://www.robots.ox.ac.uk/~vgg/software/via/)
   - [Label Studio](https://labelstud.io/)
 
-### TensorRT on GoMax
+#### TensorRT on GoMax
 - JetPack 5.0 or 5.1
 
 
-## Directory structure
+## 📁 Directory Structure
 The folder structure below will be created when we go through the tutorial. By convention, we use today's date (i.e. 2023-07-19) as the file name.
 ```
 ├── config
@@ -152,7 +172,11 @@ Save it as `./config/2023-07-19_dataset.yaml`.
 To train the model, we need to create a hyperparameter yaml file and create a `./docker-compose_train.yaml` file.
 
 ### Create a hyperparameter file
-Crete a file `./config/2023-07-19_train.yaml`. Below shows an example of training a **medium-size yolov11 instance segmentation model** with the image size of 640. To train object detection models, set `task` to `detect`.
+Crete a file `./config/2023-07-19_train.yaml`. Below shows an example of training a **medium-size YOLOv11 instance segmentation model** with the image size of 640. To train object detection models, set `task` to `detect`. 
+
+- **[Yolo11 Models](#ultralytics-lmi-supported-yolo11-models)**
+- **[Yolov8 Models](#ultralytics-lmi-supported-yolov8-models)**
+
 ```yaml
 task: segment  # (str) YOLO task, i.e. detect, segment, classify, pose, where classify, pose are NOT tested
 mode: train  # (str) YOLO mode, i.e. train, predict, export, val, track, benchmark, where track, benchmark are NOT tested
@@ -160,7 +184,7 @@ mode: train  # (str) YOLO mode, i.e. train, predict, export, val, track, benchma
 # training settings
 epochs: 300  # (int) number of epochs
 batch: 16  # (int) number of images per batch (-1 for AutoBatch)
-model: yolov11m-seg.pt # (str) one of yolov8n.pt, yolov8m.pt, yolov8l.pt, yolov8x.pt, yolov8n-seg.pt, yolov8m-seg.pt, yolov8l-seg.pt, yolov8x-seg.pt
+model: yolo11m-seg.pt # (str) one of above listed yolov8 or yolov11 models
 imgsz: 640  # (int) input images size, use the larger dimension if rectangular image
 patience: 50  # (int) epochs to wait for no observable improvement for early stopping of training
 rect: True  # (bool) use rectangular images for training if mode='train' or rectangular validation if mode='val'
@@ -213,16 +237,9 @@ Note: Do **NOT** modify the required locations in the container, such as `/app/t
 Spin up the docker containers to train the model as shown in [spin-up-the-container](#spin-up-the-container). **Ensure to load the `docker-compose_train.yaml`.** By default, once the training is done, the run_cmd.py script will create a folder named by today's date in `training` folder, i.e. `training/2023-07-19`.
 
 ### Monitor the training progress (optional)
-While the training process is running, open another terminal. 
-```bash
-# Log in the container which hosts the training process
-docker exec -it CONTAINER_ID bash 
+While training please feel free to monitor the training processing using Tensorboard
 
-# track the training progress using tensorboard
-tensorboard --logdir /app/training/2023-07-19 --port 6006
-```
-
-Execuate the command above and go to http://localhost:6006 to monitor the training.
+http://localhost:6006 to monitor the training.
 
 
 ## Prediction
