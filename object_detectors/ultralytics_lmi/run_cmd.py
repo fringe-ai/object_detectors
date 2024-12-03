@@ -3,6 +3,7 @@ from datetime import date
 import logging
 import yaml
 import os
+import sys
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -89,6 +90,15 @@ if __name__=='__main__':
     check_keys = {} # map < key : True if is_file else False >
     path_wts = get_model_path(MODEL_PATH, hyp['mode'])
     if hyp['mode'] == 'train':
+        os.system("pkill -f tensorboard")
+        pid = os.fork()
+        if pid == 0:
+            os.setsid()
+            os.system(f"tensorboard --logdir {TRAIN_FOLDER} --port 6006")
+            sys.exit(0)
+        else:
+            logger.info(f"Tensorboard started with PID {pid}")
+        
         tmp = {'data':DATA_YAML, 'project':TRAIN_FOLDER}
         check_keys['data'] = True
     elif hyp['mode'] == 'export':
