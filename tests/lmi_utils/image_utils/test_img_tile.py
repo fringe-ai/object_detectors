@@ -83,7 +83,7 @@ def test_cmds():
     my_env = os.environ.copy()
     my_env['PYTHONPATH'] = f'$PYTHONPATH:{str(ROOT)}/lmi_utils'
     with tempfile.TemporaryDirectory() as tmpdir:
-        cmd = f'python -m image_utils.img_tile --option tile -i {str(PATH_IMG)} -o {str(tmpdir)} --tile 224 224 --stride 224 224'
+        cmd = f'python -m image_utils.img_tile --option tile -i {str(PATH_IMG)} -o {str(tmpdir)} --tile 224 224 --stride 112 112'
         out = subprocess.run(cmd,check=True,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(out.stdout)
         logger.info(out.stderr)

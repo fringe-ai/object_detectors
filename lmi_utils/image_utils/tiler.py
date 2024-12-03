@@ -3,7 +3,7 @@ from itertools import product
 from math import ceil
 import os
 import logging
-
+import json
 import torch
 from torch.nn import functional as F
 
@@ -115,14 +115,16 @@ class Tiler:
         
         
     @classmethod
-    def from_pt(cls, pt_path):
-        """init tiler from a pt file
+    def from_json(cls, json_path):
+        """init tiler from a json file
 
         Args:
-            pt_path (str): path to the metadata pt file
+            json_path (str): path to a metadata json
         """
         obj = cls(0,0) # init an obj using dummy sizes
-        metadata = torch.load(pt_path)
+        with open(json_path, 'r') as file:
+            metadata = json.load(file)
+            
         for k,v in metadata.items():
             setattr(obj,k,v)
         return obj
@@ -151,7 +153,9 @@ class Tiler:
         
         if self.scale_size[0]!=im_h or self.scale_size[1]!=im_w:
             if mode==ScaleMode.INTERPOLATION:
-                self.logger.warning(f'resized img from {self.im_size} to: {self.scale_size}')
+                self.logger.warning(f'resize img from {self.im_size} to {self.scale_size}')
+            elif mode==ScaleMode.PADDING:
+                self.logger.warning(f'pad img from {self.im_size} to {self.scale_size}')
         
         n_tiles_h = int((self.scale_size[0]-self.tile_size[0])/self.stride[0]) + 1
         n_tiles_w = int((self.scale_size[1]-self.tile_size[1])/self.stride[1]) + 1
@@ -200,17 +204,20 @@ class Tiler:
     
     
     def write_metadata(self, out_path):
-        """write tiler metadata to a pt file
+        """write tiler metadata to a json file
 
         Args:
-            out_path (str): output folder or output file path
+            out_path (str): a output folder or a output file path
         """
-        ext = os.path.splitext(out_path)[-1]
+        def save_json(data, json_file):
+            with open(json_file, 'w') as f:
+                json.dump(data,f)
         
-        if ext=='.pt':
+        ext = os.path.splitext(out_path)[-1]
+        if ext=='.json':
             os.makedirs(os.path.dirname(out_path),exist_ok=True)
-            torch.save(self.__dict__,out_path)
+            save_json(self.__dict__,out_path)
         else:
             os.makedirs(out_path,exist_ok=True)
-            torch.save(self.__dict__,os.path.join(out_path,'metadata.pt'))
+            save_json(self.__dict__,os.path.join(out_path,'metadata.json'))
             

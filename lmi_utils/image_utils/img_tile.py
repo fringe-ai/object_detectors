@@ -15,6 +15,7 @@ logger.setLevel(logging.INFO)
 
 
 IM_TYPES = ('png','jpg','jpeg','tiff')
+METADATA_FILENAME = 'metadata.json'
 
 
 @torch.inference_mode()
@@ -30,7 +31,7 @@ def __to_tiles(source:Path, dest:Path, tile_hw:list, stride_hw:list, mode=ScaleM
         torchvision.io.write_png(tile, str(dest/(source.stem+f'-t{i}.png')))
     
     # write metadata for image reconstruction
-    tiler.write_metadata(dest/(source.stem+'-metadata.pt'))
+    tiler.write_metadata(dest/(source.stem+'-'+METADATA_FILENAME))
 
 
 def to_tiles(source:str, dest:str, tile_hw, stride_hw, mode=ScaleMode.PADDING, recursive=False):
@@ -53,7 +54,7 @@ def to_tiles(source:str, dest:str, tile_hw, stride_hw, mode=ScaleMode.PADDING, r
     elif src_path.is_dir():
         for t in IM_TYPES:
             for file in src_path.rglob(f'*.{t}') if recursive else src_path.glob(f'*.{t}'):
-                print(file)
+                logger.info(file)
                 __to_tiles(file, dest_path, tile_hw, stride_hw, mode)
 
 
@@ -71,9 +72,10 @@ def to_images(source, dest, mode=ScaleMode.PADDING):
     dest_path.mkdir(parents=True,exist_ok=True)
     
     meta_map = {}
-    for p in src_path.glob('*.pt'):
+    meta_fname,ext = os.path.splitext(METADATA_FILENAME)
+    for p in src_path.glob('*'+ext):
         ls = p.stem.split('-')
-        if len(ls)==2 and ls[1]=='metadata':
+        if len(ls)==2 and ls[1]==meta_fname:
             meta_map[ls[0]] = p
             
     tile_map = collections.defaultdict(list)
@@ -86,8 +88,9 @@ def to_images(source, dest, mode=ScaleMode.PADDING):
         raise Exception('tile fnames must equal to metadata fnames')
     
     for fname,ps in tile_map.items():
-        # init tiler through loading a metadata.pt
-        tiler = Tiler.from_pt(meta_map[fname])
+        logger.info(str(p)+'.png')
+        # init tiler through loading a metadata.json
+        tiler = Tiler.from_json(meta_map[fname])
         
         # load tiles
         tiles = torch.zeros(len(ps),tiler.num_channel,*tiler.tile_size,dtype=torch.uint8)
