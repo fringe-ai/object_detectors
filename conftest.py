@@ -24,5 +24,4 @@ def pytest_configure(config):
         result = subprocess.run(["git", "lfs", "pull"], check=True, capture_output=True, text=True)
         logger.info(result.stdout)
     except subprocess.CalledProcessError as e:
-        logger.exception(f"Error running git lfs pull: {e.stderr}")
-        pytest.exit("Exiting tests due to git lfs pull failure")
+        logger.exception(f"Error running git lfs pull some tests may fail: {e.stderr}")

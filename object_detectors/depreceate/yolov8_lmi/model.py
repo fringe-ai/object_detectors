@@ -239,7 +239,7 @@ class Yolov8(ODBase):
                                 for x in ops.masks2segments(masks)]
                     if return_tensor:
                         segments = [self.from_numpy(x) for x in segments]   # list of [ (n1,2), (n2,2), ... ]
-                    results['segments'].append(segments) 
+                    results['segments'].append(segments)
                     
             if return_tensor:
                 results['boxes'].append(xyxy[M])
