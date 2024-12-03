@@ -15,11 +15,29 @@ logging.basicConfig()
 
 MINIMUM_QUANT=1e-12
 
+
+def to_list(data):
+    """convert to a two element list
+    
+    Args:
+        data (int | list): a int or a two element list
+        
+    Returns:
+        list: _description_
+    """
+    if isinstance(data, int):
+        return [data]*2
+    if len(data) != 2:
+        raise Exception(f'Must be a two element list, but got {data}')
+    return list(data)
+
+
 class Anomalib_Base(ABC):
     
     logger = logging.getLogger('Anomalib Base')
     logger.setLevel(logging.INFO)
     
+    tiler = None
     
     @abstractmethod
     def __init__(self) -> None:
@@ -34,22 +52,31 @@ class Anomalib_Base(ABC):
         return torch.from_numpy(x).to(self.device) if isinstance(x, np.ndarray) else x
 
 
-    def convert_to_onnx(self, export_path, opset_version=14):
+    def convert_to_onnx(self, export_path, input_hw=None, opset_version=14):
         '''
         Desc: Convert existing .pt file to onnx
         Args:
             - path to output .onnx file
+            - input_hw: a int if h==w or a list of (h,w)
             - opset_version: onnx version ID
-        
         '''
         # write metadata to export path
         with open(os.path.join(os.path.dirname(export_path), "metadata.json"), "w", encoding="utf-8") as metadata_file:
             json.dump(self.pt_metadata, metadata_file, ensure_ascii=False, indent=4)
         
-        h,w = self.shape_inspection
+        if self.tiler is not None:
+            if input_hw is None:
+                raise Exception('Must provide input (h,w) when convert model to onnx')
+            hw = to_list(input_hw)
+            zeros = torch.zeros(1,3,*hw,device=self.device)
+            tiles = self.tiler.tile(zeros)
+            b,c,h,w = tiles.shape
+        else:
+            b,c = 1,3
+            h,w = self.model_shape
         torch.onnx.export(
             self.pt_model,
-            torch.zeros((1, 3, h, w)).to(self.device),
+            torch.zeros((b, c, h, w)).to(self.device),
             export_path,
             opset_version=opset_version,
             input_names=["input"],
@@ -57,8 +84,7 @@ class Anomalib_Base(ABC):
         )
         
     
-    @classmethod
-    def convert_trt(cls, onnx_path, out_engine_path, fp16, workspace=4096):
+    def convert_trt(self, onnx_path, out_engine_path, fp16, workspace=4096):
         """
         Desc: Convert an onnx to trt engine
         Args:
@@ -87,40 +113,39 @@ class Anomalib_Base(ABC):
         # check if metadata.json exists in the same directory as onnx_path
         onnx_dir = os.path.dirname(onnx_path)
         if os.path.isfile(f"{onnx_dir}/metadata.json"):
-            cmd2 = [f"cp {onnx_dir}/metadata.json {out_dir}"]
+            cmd2 = [f"cp -sf {onnx_dir}/metadata.json {out_dir}"]
             subprocess.run(cmd2, shell=True)
         else:
-            cls.logger.warning(f"metadata.json not found in {onnx_dir}")
+            self.logger.warning(f"metadata.json not found in {onnx_dir}")
             
             
-    @classmethod
-    def convert(cls, model_path, export_path, fp16):
+    def convert(self, model_path, export_path, input_hw=None, fp16=True):
         '''
         Desc: Converts .onnx or .pt file to tensorRT engine
         
         Args:
             - model path: model file path .pt or .onnx
             - export path: engine file path
+            - input_hw: a int if h==w or a list of input height and width
             - fp16: floating point number length
         '''
         if os.path.isfile(export_path):
             raise Exception('Export path should be a directory.')
         ext = os.path.splitext(model_path)[1]
         if ext == '.onnx':
-            cls.logger.info('Converting onnx to trt...')
+            self.logger.info('Converting onnx to trt...')
             trt_path = os.path.join(export_path, 'model.engine')
-            cls.convert_trt(model_path, trt_path, fp16)
+            self.convert_trt(model_path, trt_path, fp16)
         elif ext == '.pt':
-            model = cls(model_path)
             # convert to onnx
-            cls.logger.info('Converting pt to onnx...')
+            self.logger.info('Converting pt to onnx...')
             onnx_path = os.path.join(export_path, 'model.onnx')
-            model.convert_to_onnx(onnx_path)
-            cls.logger.info(f'the onnx model is saved at {onnx_path}')
+            self.convert_to_onnx(onnx_path, input_hw)
+            self.logger.info(f'the onnx model is saved at {onnx_path}')
             # # convert to trt
-            cls.logger.info('Converting onnx to trt engine...')
+            self.logger.info('Converting onnx to trt engine...')
             trt_path = os.path.join(export_path, 'model.engine')
-            cls.convert_trt(onnx_path, trt_path, fp16)
+            self.convert_trt(onnx_path, trt_path, fp16)
             
             
     @staticmethod
@@ -159,8 +184,7 @@ class Anomalib_Base(ABC):
         return sorted_contours, bboxes
     
     
-    @classmethod
-    def test(cls, engine_path, images_path, annot_dir,generate_stats=True,annotate_inputs=True,anom_threshold=None,anom_max=None):
+    def test(self, images_path, annot_dir,generate_stats=True,annotate_inputs=True,anom_threshold=None,anom_max=None):
         """
         Desc: test model performance
         Args:
@@ -206,7 +230,7 @@ class Anomalib_Base(ABC):
         # Input data
         directory_path=Path(images_path)
         images=list(directory_path.rglob('*.png')) + list(directory_path.rglob('*.jpg'))
-        cls.logger.info(f"{len(images)} images from {images_path}")
+        self.logger.info(f"{len(images)} images from {images_path}")
         if not images:
             return
         
@@ -215,30 +239,27 @@ class Anomalib_Base(ABC):
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
-        # Load model from .pt or .engine
-        pc = cls(engine_path)
-        pc.warmup()
-
         proctime = []
         img_all,anom_all,fname_all,path_all=[],[],[],[]
         for image_path in images:
-            cls.logger.info(f"Processing image: {image_path}.")
+            self.logger.info(f"Processing image: {image_path}.")
             image_path=str(image_path)
             img = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
             t0 = time.time()
-            anom_map = pc.predict(img)
+            anom_map = self.predict(img)
             proctime.append(time.time() - t0)
             fname=os.path.split(image_path)[1]
-            h,w = pc.shape_inspection
-            img_preproc=pipeline_utils.resize_image(img, H=h, W=w)
-            img_all.append(img_preproc)
+            if self.tiler is None:
+                h,w = self.model_shape
+                img=pipeline_utils.resize_image(img, H=h, W=w)
+            img_all.append(img)
             anom_all.append(anom_map)
             fname_all.append(fname)
             path_all.append(image_path)
         
         if generate_stats:
             # Compute & Validate pdf
-            cls.logger.info(f"Computing anomaly score PDF for all data.")
+            self.logger.info(f"Computing anomaly score PDF for all data.")
             anom_sq=np.squeeze(np.array(anom_all))
             data=np.ravel(anom_sq)
             # Fit gamma distribution to anomaly data across entire data set
@@ -257,7 +278,7 @@ class Anomalib_Base(ABC):
             quantile_patch = 1 - gamma.cdf(threshold, alpha_hat, loc=loc_hat, scale=beta_hat)
             # Reduce threshold range when threshold values are too far into the tail of the gamma distribution (quantile goes to zero)
             while quantile_patch.min()<MINIMUM_QUANT:
-                cls.logger.warning(f'Patch quantile saturated with max anomaly score: {max_data}, reducing to {max_data/2}')
+                self.logger.warning(f'Patch quantile saturated with max anomaly score: {max_data}, reducing to {max_data/2}')
                 max_data=max_data/1.2
                 threshold = np.linspace(min(data), max_data, 10)
                 quantile_patch = 1 - gamma.cdf(threshold, alpha_hat, loc=loc_hat, scale=beta_hat)
@@ -280,12 +301,12 @@ class Anomalib_Base(ABC):
             tp=[threshold_str,quantile_patch_str,quantile_sample_str]
             # Print statistics
             tp_print=tabulate(tp, tablefmt='grid')
-            cls.logger.info('Threshold options:\n'+tp_print)
+            self.logger.info('Threshold options:\n'+tp_print)
 
         if annotate_inputs:     
             if anom_threshold is None and generate_stats: 
                 anom_threshold=gamma.ppf(0.5,alpha_hat,loc=loc_hat,scale=beta_hat)
-                cls.logger.info(f'Anomaly patch threshold for 50% patch failure rate:{anom_threshold}')
+                self.logger.info(f'Anomaly patch threshold for 50% patch failure rate:{anom_threshold}')
             if anom_max is None and generate_stats:
                 # Sample target hard coded for 3% failure rate
                 p_sample_target=0.03
@@ -294,13 +315,13 @@ class Anomalib_Base(ABC):
                     p_target=find_p(threshold,quantile_patch,quantile_sample, p_sample_target)
                     # find the anomaly score coresponding to that p_patch    
                     anom_max = gamma.ppf(1-p_target,alpha_hat,loc=loc_hat,scale=beta_hat)
-                    cls.logger.info(f'Anomaly max set to 97 percentile:{anom_max}')
+                    self.logger.info(f'Anomaly max set to 97 percentile:{anom_max}')
                 else:
                     anom_max=threshold.max()
-                    cls.logger.warning(f'Anomaly patch max set to minimum discernable value: {anom_max} due to vanishing gradient in the patch quantile.  Sample failure rate: {quantile_sample.min()*100:.2e}')
+                    self.logger.warning(f'Anomaly patch max set to minimum discernable value: {anom_max} due to vanishing gradient in the patch quantile.  Sample failure rate: {quantile_sample.min()*100:.2e}')
                     
             results=zip(img_all,anom_all,fname_all)
-            cls.plot_fig(results,annot_dir,err_thresh=anom_threshold,err_max=anom_max)
+            self.plot_fig(results,annot_dir,err_thresh=anom_threshold,err_max=anom_max)
             
         # get anom stats
         means = np.array([anom.mean() for anom in anom_all])
@@ -325,14 +346,14 @@ class Anomalib_Base(ABC):
             
         if proctime:
             proctime = np.asarray(proctime)
-            cls.logger.info(f'Min Proc Time: {proctime.min()}')
-            cls.logger.info(f'Max Proc Time: {proctime.max()}')
-            cls.logger.info(f'Avg Proc Time: {proctime.mean()}')
-            cls.logger.info(f'Median Proc Time: {np.median(proctime)}')
-        cls.logger.info(f"Test results saved to {out_path}")
+            self.logger.info(f'Min Proc Time: {proctime.min()}')
+            self.logger.info(f'Max Proc Time: {proctime.max()}')
+            self.logger.info(f'Avg Proc Time: {proctime.mean()}')
+            self.logger.info(f'Median Proc Time: {np.median(proctime)}')
+        self.logger.info(f"Test results saved to {out_path}")
         if generate_stats:
             # Repeat error table
-            cls.logger.info('Threshold options:\n'+tp_print)
+            self.logger.info('Threshold options:\n'+tp_print)
             
             
     @staticmethod

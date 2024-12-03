@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import tempfile
+import subprocess
 
 # add path to the repo
 PATH = os.path.abspath(__file__)
@@ -10,7 +11,6 @@ sys.path.append(os.path.join(ROOT, 'lmi_utils'))
 sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
-import gadget_utils.pipeline_utils as pipeline_utils
 from anomalib_lmi.anomaly_model import AnomalyModel
 
 
@@ -26,15 +26,23 @@ OUTPUT_PATH = 'tests/assets/validation/ad_v0'
 
 
 def test_model():
-    AnomalyModel.test(
-        MODEL_PATH, DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True,
-    )
-    
-    
-def test_convert():
+    ad = AnomalyModel(MODEL_PATH)
+    ad.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
+        
+        
+def test_cmds():
     with tempfile.TemporaryDirectory() as t:
-        AnomalyModel.convert(MODEL_PATH,t,fp16=True)
-        AnomalyModel.test(
-            os.path.join(t,'model.engine'), DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True,
-        )
+        my_env = os.environ.copy()
+        my_env['PYTHONPATH'] = f'$PYTHONPATH:{ROOT}/lmi_utils:{ROOT}/anomaly_detectors'
+        cmd = f'python -m anomalib_lmi.anomaly_model -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p'
+        logger.info(f'running cmd: {cmd}')
+        result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
+        logger.info(result.stdout)
+        logger.info(result.stderr)
+        
+        cmd = f'python -m anomalib_lmi.anomaly_model -a convert -i {MODEL_PATH} -e {str(t)}'
+        logger.info(f'running cmd: {cmd}')
+        result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
+        logger.info(result.stdout)
+        logger.info(result.stderr)
     

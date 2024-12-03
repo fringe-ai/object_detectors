@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   ais_test:
     build:
@@ -11,7 +10,7 @@ services:
     command: >
       bash -c "cd /app/repo && pytest --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model.py"
 
-  ais_test_ad_v0_only:
+  ais_test_old_ad:
     build:
       context: .
       dockerfile: ./dockerfile.v0
