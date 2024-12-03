@@ -13,8 +13,8 @@ This is the tutorial walking through how to train and test YOLOv8 or YOLO11 mode
 
 #### Supported Yolo11 Models:
 
-| Model       | Filenames                                                                                 | Task                                         | Inference | Validation | Training | Export |
-| ----------- | ----------------------------------------------------------------------------------------- | -------------------------------------------- | --------- | ---------- | -------- | ------ |
+| Model       | Filenames                                                                                 | Task                                         | 
+| ----------- | ----------------------------------------------------------------------------------------- | -------------------------------------------- |
 | YOLO11      | `yolo11n.pt` `yolo11s.pt` `yolo11m.pt` `yolo11l.pt` `yolo11x.pt`                          | Detection            |
 | YOLO11-seg  | `yolo11n-seg.pt` `yolo11s-seg.pt` `yolo11m-seg.pt` `yolo11l-seg.pt` `yolo11x-seg.pt`      | Instance Segmentation |
 | YOLO11-pose | `yolo11n-pose.pt` `yolo11s-pose.pt` `yolo11m-pose.pt` `yolo11l-pose.pt` `yolo11x-pose.pt` | Pose/Keypoints       |
