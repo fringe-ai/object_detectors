@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 import time
 import json
-from anomalib_lmi.anomaly_model import AnomalyModel
+from anomalib_lmi.anomaly_model2 import AnomalyModel2
 
 MAX_UINT16 = 65535
 IMG_FORMATS = ['.png', '.jpg']
@@ -38,7 +38,7 @@ def predict(model_path, images_path, out_path, recursive=True):
         return
     
     logger.info(f"Loading engine: {model_path}.")
-    model = AnomalyModel(model_path)
+    model = AnomalyModel2(model_path)
     model.warmup()
 
     proctime = []
