@@ -76,7 +76,7 @@ class AnomalyModel2(Anomalib_Base):
                 self.bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
             self.binding_addrs = OrderedDict((n, d.ptr) for n, d in self.bindings.items())
             self.model_shape=list(input_shape[-2:])
-            self.trt_shape = list(input_shape)
+            self.batch_size = input_shape[0]
             self.inference_mode='TRT'
         elif ext=='.pt':  
             checkpoint = torch.load(model_path,map_location=self.device)
@@ -126,9 +126,9 @@ class AnomalyModel2(Anomalib_Base):
             img = self.tiler.tile(img,self.tile_mode)
         
         # resize baked into the pt model
-        hw = list(img.shape)
-        if self.inference_mode=='TRT' and hw!=self.trt_shape:
-            self.logger.warning(f'Got {hw}, but trt expects {self.trt_shape}.')
+        batch = img.shape[0]
+        if self.inference_mode=='TRT' and batch != self.batch_size:
+            self.logger.warning(f'Got batch size of {batch},  but trt expects {self.batch_size}. The trt engine might output weird results')
             img = F.interpolate(img, size=self.model_shape, mode='bilinear')
         
         img = img.contiguous()
@@ -171,13 +171,15 @@ class AnomalyModel2(Anomalib_Base):
         return output
         
 
-    def warmup(self,input_hw):
+    def warmup(self,input_hw=None):
         '''
         Desc: 
             Warm up model using a np zeros array with shape matching model input size.
         Args: 
-            input_hw(int | list): a int if h=w or a list of (h,w)
+            input_hw(int | list, optional): a int if h equals to w, or a list of [h,w]. Need to specify this if using tiling. Otherwise, use model's built-in shape.
         '''
+        if input_hw is None:
+            input_hw = self.model_shape
         input_hw = to_list(input_hw)
         zeros = np.zeros(input_hw+[3,])
         self.predict(zeros)

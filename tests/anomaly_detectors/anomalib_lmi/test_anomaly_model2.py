@@ -64,9 +64,11 @@ def test_compare_results_with_anomalib():
         
 def test_warmup():
     ad = AnomalyModel2(MODEL_PATH,224,112)
+    ad.warmup()
     ad.warmup([672,640])
     
     ad = AnomalyModel2(MODEL_PATH)
+    ad.warmup()
     ad.warmup([256,224])
     
     
@@ -90,9 +92,16 @@ def test_cmds():
         logger.info(result.stdout)
         logger.info(result.stderr)
         
-        cmd = f'python -m anomalib_lmi.anomaly_model2 convert -i {MODEL_PATH} -o {str(t)} --hw 1120 1120 --tile 224 224 --stride 224 224'
+        l1 = glob.glob(os.path.join(DATA_PATH, '*.png'))
+        l2 = glob.glob(os.path.join(t, '*_annot.png'))
+        assert len(l1) == len(l2)
+        
+        t2 = os.path.join(t,'recon')
+        cmd = f'python -m anomalib_lmi.anomaly_model2 convert -i {MODEL_PATH} -o {t2} --hw 1120 1120 --tile 224 224 --stride 224 224'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
         logger.info(result.stderr)
+        
+        assert os.path.isfile(os.path.join(t2, 'model.engine'))
         
