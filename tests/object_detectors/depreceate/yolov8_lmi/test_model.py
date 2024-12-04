@@ -14,7 +14,7 @@ sys.path.append(os.path.join(ROOT, 'object_detectors'))
 
 
 import gadget_utils.pipeline_utils as pipeline_utils
-from yolov8_lmi.model import Yolov8, Yolov8Obb, Yolov8Pose
+from depreceate.yolov8_lmi.model import Yolov8, Yolov8Obb, Yolov8Pose
 
 
 logging.basicConfig()

@@ -2,6 +2,7 @@
 import subprocess
 import pytest
 import logging
+import os
 import sys
 
 logging.basicConfig()
@@ -22,6 +23,10 @@ def pytest_configure(config):
     try:
         logger.info('Starting git LFS pull...')
         result = subprocess.run(["git", "lfs", "pull"], check=True, capture_output=True, text=True)
-        logger.info(result.stdout)
+        print(result.stdout)
     except subprocess.CalledProcessError as e:
-        logger.exception(f"Error running git lfs pull some tests may fail: {e.stderr}")
+        logger.exception(f"Error running git lfs pull some tests may fail: {e.output}")
+        if "Not in a Git repository" in e.output:
+            logger.error("You are not in a git repository. Please run this command in a git repository.")
+        else:
+            pytest.exit(f"Error running git lfs pull some tests may fail: {e.output}")
