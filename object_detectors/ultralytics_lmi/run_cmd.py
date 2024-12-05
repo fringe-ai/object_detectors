@@ -125,5 +125,5 @@ if __name__=='__main__':
     logger.info(f'cmd: {final_cmd}')
     
     # run final command
-    subprocess.run(final_cmd, check=True, shell=True)
+    subprocess.run(" ".join(final_cmd), check=True, shell=True)
     
