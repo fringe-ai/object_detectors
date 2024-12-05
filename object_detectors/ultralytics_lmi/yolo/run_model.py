@@ -84,7 +84,8 @@ if __name__ == '__main__':
             im1 = im0
             if args.sz[0] != im0.shape[0] or args.sz[1] != im0.shape[1]:
                 if args.resize_pad:
-                    resized = resize_image(H=args.sz[0])
+                    logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, resize/padding')
+                    resized = resize_image(im=im0,H=args.sz[0])
                     operators.append({
                         'resize': [resized.shape[1],resized.shape[0], im0.shape[1], im0.shape[0]]
                     })
@@ -92,10 +93,9 @@ if __name__ == '__main__':
                     operators.append({
                         'pad': [pad_L, pad_R, pad_T, pad_B]
                     })
-                    
-                logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, warping image')
-                rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
-                im1 = cv2.resize(im0,(args.sz[1],args.sz[0]))
+                else:
+                    rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
+                    im1 = cv2.resize(im0,(args.sz[1],args.sz[0]))
             else:
                 rh,rw =1.0,1.0
             
