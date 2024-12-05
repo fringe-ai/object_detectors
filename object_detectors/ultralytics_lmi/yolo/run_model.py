@@ -111,15 +111,13 @@ if __name__ == '__main__':
             
             if len(results['boxes']):
                 # uppack results for a single image
+                use_revert_to_origin = len(operators) > 0
                 boxes,scores,classes = results['boxes'][0],results['scores'][0],results['classes'][0]
                 masks = results['masks'][0] if 'masks' in results else None
                 segments = results['segments'][0] if 'segments' in results else []
                 points = results['points'][0] if 'points' in results else []
-                use_revert_to_origin = len(operators) > 0
-                if use_revert_to_origin:
-                    boxes = revert_to_origin(
-                        boxes, operators
-                    )
+                
+                    
                     
                 
                 # loop through each box
@@ -142,6 +140,7 @@ if __name__ == '__main__':
                         else:
                             box[[0,2]] /= rw
                             box[[1,3]] /= rh
+                    box = revert_to_origin([box], operators)
                     box = box.astype(np.int32)
                     # annotation
                     color = color_map[classes[j]]
@@ -174,7 +173,7 @@ if __name__ == '__main__':
                             pts[:,0] /= rw
                             pts[:,1] /= rh
                         else:
-                            revert_to_origin(pts, operators)
+                            pts = revert_to_origin(pts, operators)
                         pts = pts.astype(np.int32)
                         for pt in pts:
                             cv2.circle(im_out, tuple(pt), 4, color, -1)
@@ -184,7 +183,7 @@ if __name__ == '__main__':
                         bbox = box
                         angle = 0
                         if args.obb:
-                            bbox  =  get_rotated_bbox(box)
+                            bbox = get_rotated_bbox(box)
                             x1, y1, w, h , angle = bbox
                             box  = [
                                 x1, y1, x1+w, y1+h
