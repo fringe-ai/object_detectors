@@ -121,9 +121,10 @@ if __name__=='__main__':
     sanity_check(hyp, check_keys)
     
     # get final command
-    final_cmd = ['yolo'] + [f'{k}={v}' for k, v in hyp.items()] + [f'name="{today}"']
+    # final_cmd = ['yolo'] + [f'{k}={v}' for k, v in hyp.items()] + [f'name="{today}"']
+    final_cmd = ['yolo'] + [hyp["task"]] + [hyp["mode"]] + [f'{k}={v}' for k, v in hyp.items() if k not in ["mode", "task"]]
     logger.info(f'cmd: {final_cmd}')
     
     # run final command
-    subprocess.run(" ".join(final_cmd), check=True, shell=True)
+    subprocess.run(final_cmd, check=True)
     
