@@ -100,7 +100,7 @@ if __name__ == '__main__':
                 })
                 logger.warning(f"{im1.shape}, padding")
             
-            if args.sz[0] != im0.shape[0] or args.sz[1] != im0.shape[1]:
+            if args.sz[0] != im1.shape[0] or args.sz[1] != im1.shape[1]:
                 logger.warning(f"{im1.shape}, warping")
                 rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
                 im1 = cv2.resize(im0,(args.sz[1],args.sz[0]))
