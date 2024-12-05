@@ -76,15 +76,6 @@ def add_configs(final_configs:dict, configs:dict):
 
 if __name__=='__main__':
     # check if files exist
-    os.system("pkill -f tensorboard")
-    pid = os.fork()
-    if pid == 0:
-        os.setsid()
-        os.system(f"tensorboard --logdir {TRAIN_FOLDER} --port 6006")
-        sys.exit(0)
-    else:
-        logger.info(f"Tensorboard started with PID {pid}")
-    
     check_path_exist(HYP_YAML, True)
         
     # load hyp yaml file
@@ -99,6 +90,15 @@ if __name__=='__main__':
     check_keys = {} # map < key : True if is_file else False >
     path_wts = get_model_path(MODEL_PATH, hyp['mode'])
     if hyp['mode'] == 'train':
+        os.system("pkill -f tensorboard")
+        pid = os.fork()
+        if pid == 0:
+            os.setsid()
+            os.system(f"tensorboard --logdir {TRAIN_FOLDER} --port 6006")
+            sys.exit(0)
+        else:
+            logger.info(f"Tensorboard started with PID {pid}")
+        
         tmp = {'data':DATA_YAML, 'project':TRAIN_FOLDER}
         check_keys['data'] = True
     elif hyp['mode'] == 'export':
@@ -125,6 +125,5 @@ if __name__=='__main__':
     logger.info(f'cmd: {final_cmd}')
     
     # run final command
-    # subprocess.run(final_cmd, check=True)
-    os.system(" ".join(final_cmd))
+    subprocess.run(final_cmd, check=True, shell=True)
     
