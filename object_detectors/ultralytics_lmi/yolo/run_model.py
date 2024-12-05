@@ -31,7 +31,8 @@ if __name__ == '__main__':
     parser.add_argument('--obb', action='store_true', help='[optional] whether to run Oriented Bounding Box model')
     parser.add_argument('--pose', action='store_true', help='[optional] whether to run Pose model')
     parser.add_argument('--el', action='store_false', help='[optional] log level default is ERROR', default=False)
-    parser.add_argument('--resize-pad', action='store_true', help='Resize to height and than pad', default=False)
+    parser.add_argument('--resize', required=False, nargs=2, type=int, help='resize')
+    parser.add_argument('--pad', required=False, nargs=2, type=int, help='pad')
     args = parser.parse_args()
     
     logging.basicConfig(level=logging.NOTSET)
@@ -82,20 +83,24 @@ if __name__ == '__main__':
             # warp image
             operators = []
             im1 = im0
-            if args.sz[0] != im0.shape[0] or args.sz[1] != im0.shape[1]:
-                if args.resize_pad:
-                    logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, resize/padding')
-                    resized = resize_image(im=im0,H=args.sz[0])
-                    operators.append({
-                        'resize': [resized.shape[1],resized.shape[0], im0.shape[1], im0.shape[0]]
-                    })
-                    im1, pad_L, pad_R, pad_T, pad_B = fit_im_to_size(im=resized, W=args.sz[1])
-                    operators.append({
+            
+            if args.resize:
+                logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, resizing')
+                im1 = resize_image(im=im0,H=args.resize[0], W=args.resize[1])
+                operators.append({
+                    'resize': [im1.shape[1],im1.shape[0], im0.shape[1], im0.shape[0]]
+                })
+                
+            if args.pad:
+                logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, padding')
+                im1, pad_L, pad_R, pad_T, pad_B = fit_im_to_size(im=im1, H=args.pad[0], W=args.pad[1])
+                operators.append({
                         'pad': [pad_L, pad_R, pad_T, pad_B]
-                    })
-                else:
-                    rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
-                    im1 = cv2.resize(im0,(args.sz[1],args.sz[0]))
+                })
+            
+            if args.sz[0] != im0.shape[0] or args.sz[1] != im0.shape[1]:
+                rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
+                im1 = cv2.resize(im0,(args.sz[1],args.sz[0]))
             else:
                 rh,rw =1.0,1.0
             
@@ -112,7 +117,7 @@ if __name__ == '__main__':
             if len(results['boxes']):
                 # uppack results for a single image
                 use_revert_to_origin = len(operators) > 0
-                results["boxes"] = revert_to_origin(results['boxes'], operators)
+                
                 boxes,scores,classes = results['boxes'][0],results['scores'][0],results['classes'][0]
                 masks = results['masks'][0] if 'masks' in results else None
                 segments = results['segments'][0] if 'segments' in results else []
