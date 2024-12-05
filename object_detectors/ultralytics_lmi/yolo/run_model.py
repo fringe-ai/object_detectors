@@ -83,20 +83,24 @@ if __name__ == '__main__':
             # warp image
             operators = []
             im1 = im0
-            
+            fname = os.path.basename(p)
+            save_path = os.path.join(args.path_out,fname)
             if args.resize:
-                logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, resizing')
+                
                 im1 = resize_image(im=im0,H=args.resize[0], W=args.resize[1])
+                logger.warning(f"{im1.shape}, resizing")
+                cv2.imwrite(save_path.replace('.png', '.resized.png'), im1)
                 operators.append({
                     'resize': [im1.shape[1],im1.shape[0], im0.shape[1], im0.shape[0]]
                 })
                 
             if args.pad:
-                logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, padding')
                 im1, pad_L, pad_R, pad_T, pad_B = fit_im_to_size(im=im1, H=args.pad[0], W=args.pad[1])
                 operators.append({
                         'pad': [pad_L, pad_R, pad_T, pad_B]
                 })
+                cv2.imwrite(save_path.replace('.png', '.padded.png'), im1)
+                logger.warning(f"{im1.shape}, padding")
             
             if args.sz[0] != im0.shape[0] or args.sz[1] != im0.shape[1]:
                 rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
@@ -110,8 +114,7 @@ if __name__ == '__main__':
             results = model.postprocess(preds,im,im1,args.confidence)
             t2 = time.time()
             
-            fname = os.path.basename(p)
-            save_path = os.path.join(args.path_out,fname)
+
             im_out = np.copy(im0)
             
             if len(results['boxes']):
