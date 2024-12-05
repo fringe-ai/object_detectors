@@ -126,8 +126,8 @@ if __name__ == '__main__':
                 segments = results['segments'][0] if 'segments' in results else []
                 points = results['points'][0] if 'points' in results else []
                 if use_revert_to_origin:
-                    box = revert_to_origin(
-                        [box], operators
+                    boxes = revert_to_origin(
+                        [boxes], operators
                     )
                     
                     
