@@ -127,7 +127,7 @@ if __name__ == '__main__':
                 points = results['points'][0] if 'points' in results else []
                 if use_revert_to_origin:
                     boxes = revert_to_origin(
-                        [boxes], operators
+                        boxes, operators
                     )
                     
                     
