@@ -89,7 +89,6 @@ if __name__ == '__main__':
                 
                 im1 = resize_image(im=im0,H=args.resize[0], W=args.resize[1])
                 logger.warning(f"{im1.shape}, resizing")
-                cv2.imwrite(save_path.replace('.png', '.resized.png'), im1)
                 operators.append({
                     'resize': [im1.shape[1],im1.shape[0], im0.shape[1], im0.shape[0]]
                 })
@@ -99,10 +98,10 @@ if __name__ == '__main__':
                 operators.append({
                         'pad': [pad_L, pad_R, pad_T, pad_B]
                 })
-                cv2.imwrite(save_path.replace('.png', '.padded.png'), im1)
                 logger.warning(f"{im1.shape}, padding")
             
             if args.sz[0] != im0.shape[0] or args.sz[1] != im0.shape[1]:
+                logger.warning(f"{im1.shape}, padding")
                 rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
                 im1 = cv2.resize(im0,(args.sz[1],args.sz[0]))
             else:
@@ -121,11 +120,15 @@ if __name__ == '__main__':
                 # uppack results for a single image
                 use_revert_to_origin = len(operators) > 0
                 
+                
                 boxes,scores,classes = results['boxes'][0],results['scores'][0],results['classes'][0]
                 masks = results['masks'][0] if 'masks' in results else None
                 segments = results['segments'][0] if 'segments' in results else []
                 points = results['points'][0] if 'points' in results else []
-                
+                if use_revert_to_origin:
+                    box = revert_to_origin(
+                        [box], operators
+                    )
                     
                     
                 
