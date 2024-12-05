@@ -75,7 +75,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install libgl1 -y
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install --user opencv-python
-RUN pip install ultralytics -U
+RUN pip install ultralytics==8.3.22
 
 # clone LMI AI Solutions repository
 WORKDIR /repos
