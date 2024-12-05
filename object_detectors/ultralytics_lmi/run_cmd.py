@@ -126,5 +126,5 @@ if __name__=='__main__':
     
     # run final command
     # subprocess.run(final_cmd, check=True)
-    os.system("-".join(final_cmd))
+    os.system(" ".join(final_cmd))
     
