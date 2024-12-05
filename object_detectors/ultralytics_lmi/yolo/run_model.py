@@ -140,7 +140,7 @@ if __name__ == '__main__':
                         else:
                             box[[0,2]] /= rw
                             box[[1,3]] /= rh
-                    box = revert_to_origin([box], operators)
+                    box = revert_to_origin(np.array([box]), operators)
                     box = box.astype(np.int32)
                     # annotation
                     color = color_map[classes[j]]
