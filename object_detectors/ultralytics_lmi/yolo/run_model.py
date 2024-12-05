@@ -112,7 +112,7 @@ if __name__ == '__main__':
             if len(results['boxes']):
                 # uppack results for a single image
                 use_revert_to_origin = len(operators) > 0
-                results["boxes"] = revert_to_origin(boxes, operators)
+                results["boxes"] = revert_to_origin(results['boxes'], operators)
                 boxes,scores,classes = results['boxes'][0],results['scores'][0],results['classes'][0]
                 masks = results['masks'][0] if 'masks' in results else None
                 segments = results['segments'][0] if 'segments' in results else []
