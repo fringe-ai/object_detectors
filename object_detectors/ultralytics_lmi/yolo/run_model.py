@@ -8,7 +8,7 @@ import collections
 from tqdm import tqdm
 
 from ultralytics_lmi.yolo.model import Yolo, YoloObb, YoloPose
-from gadget_utils.pipeline_utils import plot_one_rbox, get_img_path_batches, plot_one_box
+from gadget_utils.pipeline_utils import plot_one_rbox, get_img_path_batches, plot_one_box, resize_image, fit_im_to_size, revert_to_origin, revert_masks_to_origin
 from label_utils.shapes import Rect, Mask
 from label_utils.csv_utils import write_to_csv
 from label_utils.bbox_utils import get_rotated_bbox
@@ -31,6 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--obb', action='store_true', help='[optional] whether to run Oriented Bounding Box model')
     parser.add_argument('--pose', action='store_true', help='[optional] whether to run Pose model')
     parser.add_argument('--el', action='store_false', help='[optional] log level default is ERROR', default=False)
+    parser.add_argument('--resize-pad', action='store_true', help='Resize to height and than pad', default=False)
     args = parser.parse_args()
     
     logging.basicConfig(level=logging.NOTSET)
@@ -79,8 +80,19 @@ if __name__ == '__main__':
             im0 = cv2.cvtColor(im0, cv2.COLOR_BGR2RGB)
             
             # warp image
+            operators = []
             im1 = im0
             if args.sz[0] != im0.shape[0] or args.sz[1] != im0.shape[1]:
+                if args.resize_pad:
+                    resized = resize_image(H=args.sz[0])
+                    operators.append({
+                        'resize': [resized.shape[1],resized.shape[0], im0.shape[1], im0.shape[0]]
+                    })
+                    im1, pad_L, pad_R, pad_T, pad_B = fit_im_to_size(im=resized, W=args.sz[1])
+                    operators.append({
+                        'pad': [pad_L, pad_R, pad_T, pad_B]
+                    })
+                    
                 logger.warning(f'model input size: {args.sz} is different from image size: {im0.shape}, warping image')
                 rh,rw = args.sz[0]/im0.shape[0],args.sz[1]/im0.shape[1]
                 im1 = cv2.resize(im0,(args.sz[1],args.sz[0]))
@@ -103,6 +115,12 @@ if __name__ == '__main__':
                 masks = results['masks'][0] if 'masks' in results else None
                 segments = results['segments'][0] if 'segments' in results else []
                 points = results['points'][0] if 'points' in results else []
+                use_revert_to_origin = len(operators) > 0
+                if use_revert_to_origin:
+                    boxes = revert_to_origin(
+                        boxes, operators
+                    )
+                    
                 
                 # loop through each box
                 for j in range(len(boxes)-1,-1,-1): 
@@ -110,14 +128,20 @@ if __name__ == '__main__':
                     mask = None
                     if masks is not None:
                         mask = masks[j]
-                        mask = cv2.resize(mask,(im_out.shape[1],im_out.shape[0]))
+                        if use_revert_to_origin:
+                            mask = revert_masks_to_origin(
+                                masks, operators
+                            )
+                        else:
+                            mask = cv2.resize(mask,(im_out.shape[1],im_out.shape[0]))
                     box = boxes[j]
-                    if args.obb:
-                        for b in range(len(box)):
-                            box[b] = [box[b][0] /rw, box[b][1] /rh]
-                    else:
-                        box[[0,2]] /= rw
-                        box[[1,3]] /= rh
+                    if not use_revert_to_origin:
+                        if args.obb:
+                            for b in range(len(box)):
+                                box[b] = [box[b][0] /rw, box[b][1] /rh]
+                        else:
+                            box[[0,2]] /= rw
+                            box[[1,3]] /= rh
                     box = box.astype(np.int32)
                     # annotation
                     color = color_map[classes[j]]
@@ -125,13 +149,15 @@ if __name__ == '__main__':
                         plot_one_rbox(box,im_out,color=color,label=f'{classes[j]}: {scores[j]:.2f}')
                     else:
                         plot_one_box(box,im_out,mask,color=color,label=f'{classes[j]}: {scores[j]:.2f}')
-                        
                     
                     if segments and len(segments[j]):
                         seg = segments[j]
                         # convert segments to original image size
-                        seg[:,0] /= rw
-                        seg[:,1] /= rh
+                        if not use_revert_to_origin:
+                            seg[:,0] /= rw
+                            seg[:,1] /= rh
+                        else:
+                            seg = revert_to_origin(seg, operators)
                         seg = seg.astype(np.int32)
                         seg2 = segments[j].reshape((-1,1,2)).astype(np.int32)
                         cv2.drawContours(im_out, [seg2], -1, color, 1)
@@ -144,8 +170,11 @@ if __name__ == '__main__':
                     if len(points):
                         pts = points[j]
                         # convert points to original image size
-                        pts[:,0] /= rw
-                        pts[:,1] /= rh
+                        if not use_revert_to_origin:
+                            pts[:,0] /= rw
+                            pts[:,1] /= rh
+                        else:
+                            revert_to_origin(pts, operators)
                         pts = pts.astype(np.int32)
                         for pt in pts:
                             cv2.circle(im_out, tuple(pt), 4, color, -1)
