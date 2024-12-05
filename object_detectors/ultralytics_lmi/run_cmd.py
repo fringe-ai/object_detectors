@@ -84,6 +84,7 @@ if __name__=='__main__':
         sys.exit(0)
     else:
         logger.info(f"Tensorboard started with PID {pid}")
+    
     check_path_exist(HYP_YAML, True)
         
     # load hyp yaml file
@@ -124,5 +125,6 @@ if __name__=='__main__':
     logger.info(f'cmd: {final_cmd}')
     
     # run final command
-    subprocess.run(final_cmd, check=True)
+    # subprocess.run(final_cmd, check=True)
+    os.system("-".join(final_cmd))
     
