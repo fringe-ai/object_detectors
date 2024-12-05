@@ -141,7 +141,7 @@ if __name__ == '__main__':
                             box[[0,2]] /= rw
                             box[[1,3]] /= rh
                     else:
-                        box = revert_to_origin(box, operators)
+                        box = revert_to_origin(torch.unsqueeze(box,0), operators)
                     box = box.astype(np.int32)
                     # annotation
                     color = color_map[classes[j]]
