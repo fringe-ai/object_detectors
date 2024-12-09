@@ -87,7 +87,7 @@ class AnomalyModelTRT(Anomalib_Base):
 
 class AnomalyModelPT(Anomalib_Base):
 
-    def __init__(self,  model_path, tile=None, stride=None, tile_mode='padding', version='v1'):
+    def __init__(self,  model_path, tile=None, stride=None, tile_mode='padding', version='v0'):
         if not os.path.isfile(model_path):
             raise Exception(f'Cannot find the model file: {model_path}')
 
@@ -184,7 +184,7 @@ class AnomalyModelPT(Anomalib_Base):
 
 
 class AnomalyModel(Anomalib_Base):
-    def __new__(cls,model_path, tile=None, stride=None, tile_mode='padding',version='v1'):
+    def __new__(cls,model_path, tile=None, stride=None, tile_mode='padding',version='v0'):
         if not os.path.isfile(model_path):
             raise Exception(f'Cannot find the model file: {model_path}')
         
