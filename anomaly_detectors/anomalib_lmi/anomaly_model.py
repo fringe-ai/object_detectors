@@ -1,129 +1,156 @@
 import os
-import logging 
+import logging
 from collections import OrderedDict, namedtuple
 import tensorrt as trt
 import torch
 import numpy as np
 import albumentations as A
-
-from .base import Anomalib_Base
+from torchvision.transforms import v2
+import torch.nn.functional as F
+from .base import Anomalib_Base, to_list
 import gadget_utils.pipeline_utils as pipeline_utils
-
-
-logging.basicConfig()
-
-PASS = 'PASS'
-FAIL = 'FAIL'
-MINIMUM_QUANT=1e-12
+from collections.abc import Sequence
+from image_utils.tiler import Tiler, ScaleMode
 
 Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
-
-class AnomalyModel(Anomalib_Base):
-    '''
-    Desc: Class used for AD model inference.  
-     
-    Args: 
-        - model_path: path to .pt file or TRT engine
+         
+class AnomalyModelTRT(Anomalib_Base):
     
-    '''
-    logger = logging.getLogger('AnomalyModel v1')
-    logger.setLevel(logging.INFO)
-    
-    def __init__(self, model_path):
+    def __init__(self, model_path, tile=None, stride=None, tile_mode='padding',version='v1'):
+        self.version = version
+        
         if not os.path.isfile(model_path):
             raise Exception(f'Cannot find the model file: {model_path}')
-        
+
+        self.logger.info(f"Loading model: {model_path}")
+        with open(model_path, "rb") as f, trt.Runtime(trt.Logger(trt.Logger.WARNING)) as runtime:
+            self.model = runtime.deserialize_cuda_engine(f.read())
+        self.context = self.model.create_execution_context()
+        self.bindings = OrderedDict()
+        self.output_names = []
+        self.fp16 = False
+        for i in range(self.model.num_bindings):
+            name = self.model.get_tensor_name(i)
+            dtype = trt.nptype(self.model.get_tensor_dtype(name))
+            shape = tuple(self.context.get_tensor_shape(name))
+            self.logger.info(f'binding {name} ({dtype}) with shape {shape}')
+            if self.model.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
+                input_shape = shape
+                if dtype == np.float16:
+                    self.fp16 = True
+            else:
+                self.output_names.append(name)
+            im = self.from_numpy(np.empty(shape, dtype=dtype)).to(self.device)
+            self.bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
+
+        self.binding_addrs = OrderedDict((n, d.ptr) for n, d in self.bindings.items())
+        self.model_shape=list(input_shape[-2:])
+        self.batch_size = input_shape[0]
+        self.inference_mode='TRT'
+
+        if tile is not None:
+            if stride is None:
+                raise Exception('Must provide stride using tiling')
+            
+            tile = to_list(tile)
+            if self.model_shape != tile:
+                raise Exception(f'tile shape {tile} mismatch with model expected shape: {self.model_shape}')
+            
+            self.tiler = Tiler(tile,stride)
+            self.tile_mode = ScaleMode.PADDING if tile_mode=='padding' else ScaleMode.INTERPOLATION
+            self.logger.info(f'init tiler with tile={tile}, stride={stride}, mode={self.tile_mode}')
+
+    @torch.inference_mode()
+    def predict(self, image):
+        '''
+        Desc: Model prediction
+        Args: image: numpy array [H,W,Ch]
+
+        Note: predict calls the preprocess method
+        returns:
+            - output: resized output to match training data's size
+        '''
+        input_batch = self.preprocess(image)
+        self.binding_addrs['input'] = int(input_batch.data_ptr())
+        self.context.execute_v2(list(self.binding_addrs.values()))
+        outputs = {x: self.bindings[x].data for x in self.output_names}
+        output = outputs['output']
+
+        if self.tiler is not None:
+            output = self.tiler.untile(output, self.tile_mode)
+
+        if isinstance(output, torch.Tensor):
+            output = output.cpu().numpy()
+        output = np.squeeze(output)
+        return output
+
+
+class AnomalyModelPT(Anomalib_Base):
+
+    def __init__(self,  model_path, tile=None, stride=None, tile_mode='padding', version='v1'):
+        if not os.path.isfile(model_path):
+            raise Exception(f'Cannot find the model file: {model_path}')
+
         if torch.cuda.is_available():
-            self.device = torch.device('cuda:0')
+            self.device = torch.device('cuda')
         else:
             self.logger.warning('GPU device unavailable. Use CPU instead.')
             self.device = torch.device('cpu')
-            
-        _,ext=os.path.splitext(model_path)
-        self.logger.info(f"Loading model: {model_path}")
-        if ext=='.engine':
-            with open(model_path, "rb") as f, trt.Runtime(trt.Logger(trt.Logger.WARNING)) as runtime:
-                model = runtime.deserialize_cuda_engine(f.read())
-            self.context = model.create_execution_context()
-            self.bindings = OrderedDict()
-            self.output_names = []
-            self.fp16 = False
-            for i in range(model.num_bindings):
-                name = model.get_tensor_name(i)
-                dtype = trt.nptype(model.get_tensor_dtype(name))
-                shape = tuple(self.context.get_tensor_shape(name))
-                self.logger.info(f'binding {name} ({dtype}) with shape {shape}')
-                if model.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
-                    if dtype == np.float16:
-                        self.fp16 = True
-                else:
-                    self.output_names.append(name)
-                im = self.from_numpy(np.empty(shape, dtype=dtype)).to(self.device)
-                self.bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
-            self.binding_addrs = OrderedDict((n, d.ptr) for n, d in self.bindings.items())
-            self.model_shape=list(shape[-2:])
-            self.inference_mode='TRT'
-        elif ext=='.pt':     
+        
+        self.version = version
+        self.loaded = False
+        try:
             model = torch.load(model_path,map_location=self.device)["model"]
             model.eval()
             self.pt_model=model.to(self.device)
             self.pt_metadata = torch.load(model_path, map_location=self.device)["metadata"] if model_path else {}
-            self.pt_transform=A.from_dict(self.pt_metadata["transform"])
-            for d in self.pt_metadata['transform']['transform']['transforms']:
-                if d['__class_fullname__']=='Resize':
-                    self.model_shape = [d['height'], d['width']]
+            self.logger.info(f"Model metadata: {self.pt_metadata}")
+            if "transform" in self.pt_metadata:
+                self.pt_transform=A.from_dict(self.pt_metadata["transform"])
+                self.version = 'v0'
+            else:
+                self.pt_transform = None
+                self.version = 'v1'
+            
+            if self.version != version:
+                self.logger.warning(f"Model version updated {self.version}")
+
+            if self.version == 'v0':
+                for d in self.pt_metadata['transform']['transform']['transforms']:
+                    if d['__class_fullname__']=='Resize':
+                        self.model_shape = [d['height'], d['width']]
+            elif self.version == 'v1':
+                for d in self.pt_model.transform.transforms:
+                    if isinstance(d, v2.Resize):
+                        self.model_shape = to_list(d.size)
             self.inference_mode='PT'
-        else:
-            raise Exception(f'Unknown model format: {ext}')
+            self.loaded = True
+        except Exception as e:
+            self.logger.exception(
+                f"Unable to load pt model using v0 and v1 {e}")
         
+        try:
+            if not self.loaded:
+                self.pt_model = torch.jit.load(model_path)
+                self.model_shape = [224, 224]
+                self.inference_mode='TS'
+        except Exception as e:
+            self.logger.exception(
+                f"Unable to load pt model using torchscript {e}")
+            self.loaded = False
         
-    @torch.inference_mode()
-    def normalize(self,image: np.ndarray) -> np.ndarray:
-        """
-        Desc: Normalize the image to the given mean and standard deviation for consistency with pytorch backbone
-        """
-        image = image.astype(np.float32)
-        mean = (0.485, 0.456, 0.406)
-        std = (0.229, 0.224, 0.225)
-        image /= 255.0
-        image -= mean
-        image /= std
-        return image
+        if tile is not None:
+            if stride is None:
+                raise Exception('Must provide stride using tiling')
+            
+            tile = to_list(tile)
+            if self.model_shape != tile:
+                raise Exception(f'tile shape {tile} mismatch with model expected shape: {self.model_shape}')
+            
+            self.tiler = Tiler(tile,stride)
+            self.tile_mode = ScaleMode.PADDING if tile_mode=='padding' else ScaleMode.INTERPOLATION
+            self.logger.info(f'init tiler with tile={tile}, stride={stride}, mode={self.tile_mode}')
     
-    
-    @torch.inference_mode()
-    def preprocess(self, image):
-        '''
-        Desc: Preprocess input image.
-        args:
-            - image: numpy array [H,W,Ch]
-        
-        '''
-        if self.inference_mode=='TRT':
-            h,w =  self.model_shape
-            img = pipeline_utils.resize_image(self.normalize(image), W=w, H=h)
-            input_dtype = np.float16 if self.fp16 else np.float32
-            input_batch = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0).astype(input_dtype)
-            return self.from_numpy(input_batch)
-        elif self.inference_mode=='PT':
-            processed_image = self.pt_transform(image=image)["image"]
-            if len(processed_image) == 3:
-                processed_image = processed_image.unsqueeze(0)
-            return processed_image.to(self.device)
-        else:
-            raise Exception(f'Unknown model format: {self.inference_mode}')
-        
-    
-    @torch.inference_mode()
-    def warmup(self):
-        '''
-        Desc: Warm up model using a np zeros array with shape matching model input size.
-        Args: None
-        '''
-        shape=self.model_shape+[3,]
-        self.predict(np.zeros(shape))
-        
-        
     @torch.inference_mode()
     def predict(self, image):
         '''
@@ -131,20 +158,42 @@ class AnomalyModel(Anomalib_Base):
         Args: image: numpy array [H,W,Ch]
         
         Note: predict calls the preprocess method
+        returns:
+            - output: resized output to match training data's size
         '''
-        if self.inference_mode=='TRT':
-            input_batch = self.preprocess(image)
-            self.binding_addrs['input'] = int(input_batch.data_ptr())
-            self.context.execute_v2(list(self.binding_addrs.values()))
-            outputs = {x:self.bindings[x].data.cpu().numpy() for x in self.output_names}
-            output=outputs['output']
-        elif self.inference_mode=='PT':
-            preprocessed_image = self.preprocess(image)
-            output=self.pt_model(preprocessed_image)[0].cpu().numpy()
-        output=np.squeeze(output).astype(np.float32)
+        input_batch = self.preprocess(image)
+        if self.version == 'v0':
+            output=self.pt_model(input_batch)[0].cpu().numpy()
+        else:
+            preds = self.pt_model(input_batch)
+            if isinstance(preds, torch.Tensor):
+                output = preds
+            elif isinstance(preds, dict):
+                output = preds['anomaly_map']
+            elif isinstance(preds, Sequence):
+                output = preds[1]
+            else:
+                raise Exception(f'Unknown prediction type: {type(preds)}')
+
+            if self.tiler is not None:
+                output = self.tiler.untile(output,self.tile_mode)
+            if isinstance(output, torch.Tensor):
+                output = output.cpu().numpy()
+        output = np.squeeze(output)
         return output
 
 
+class AnomalyModel(Anomalib_Base):
+    def __new__(cls,model_path, tile=None, stride=None, tile_mode='padding',version='v1'):
+        if not os.path.isfile(model_path):
+            raise Exception(f'Cannot find the model file: {model_path}')
+        
+        _,ext=os.path.splitext(model_path)
+        if ext=='.engine':
+            return AnomalyModelTRT(model_path, tile=None, stride=None, tile_mode='padding',version=version)
+            
+        else:
+            return AnomalyModelPT(model_path, tile=None, stride=None, tile_mode='padding', version=version)
 
 if __name__ == '__main__':
     import argparse
@@ -159,6 +208,7 @@ if __name__ == '__main__':
     ap.add_argument('-p','--plot',action='store_true', help='plot the annotated images')
     ap.add_argument('-t','--ad_threshold',type=float,default=None,help='AD patch threshold.')
     ap.add_argument('-m','--ad_max',type=float,default=None,help='AD patch max anomaly.')
+    ap.add_argument('-v','--version',type=str,default=None,help='Anomalib version v0 or v1.')
 
     args = vars(ap.parse_args())
     action=args['action']
@@ -175,4 +225,3 @@ if __name__ == '__main__':
         os.makedirs(args['annot_dir'],exist_ok=True)
         ad.test(args['data_dir'],args['annot_dir'],args['generate_stats'],
                 args['plot'],args['ad_threshold'],args['ad_max'])
-        
