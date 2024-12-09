@@ -190,10 +190,10 @@ class AnomalyModel(Anomalib_Base):
         
         _,ext=os.path.splitext(model_path)
         if ext=='.engine':
-            return AnomalyModelTRT(model_path, tile=None, stride=None, tile_mode='padding',version=version)
+            return AnomalyModelTRT(model_path, tile=tile, stride=stride, tile_mode=tile_mode,version=version)
             
         else:
-            return AnomalyModelPT(model_path, tile=None, stride=None, tile_mode='padding', version=version)
+            return AnomalyModelPT(model_path, tile=tile, stride=stride, tile_mode=tile_mode, version=version)
 
 if __name__ == '__main__':
     import argparse
