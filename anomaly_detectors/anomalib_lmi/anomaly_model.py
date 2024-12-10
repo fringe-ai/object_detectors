@@ -196,27 +196,39 @@ class AnomalyModel(Anomalib_Base):
 
 if __name__ == '__main__':
     import argparse
-
     ap = argparse.ArgumentParser()
-    ap.add_argument('-a','--action', default="test", nargs='?', choices=['convert','test'], help='Action modes')
-    ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
-    ap.add_argument('-e','--export_dir', default="/app/export")
-    ap.add_argument('-d','--data_dir', default="/app/data", help='Data file directory.')
-    ap.add_argument('-o','--annot_dir', default="/app/annotation_results", help='Annot file directory.')
-    ap.add_argument('-g','--generate_stats', action='store_true',help='generate the data stats')
-    ap.add_argument('-p','--plot',action='store_true', help='plot the annotated images')
-    ap.add_argument('-t','--ad_threshold',type=float,default=None,help='AD patch threshold.')
-    ap.add_argument('-m','--ad_max',type=float,default=None,help='AD patch max anomaly.')
+    subs = ap.add_subparsers(dest='action',required=True,help='Action modes: test or convert')
+    
+    test_ap = subs.add_parser('test',help='test model')
+    test_ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
+    test_ap.add_argument('-d','--data_dir', default="/app/data", help='Data file directory.')
+    test_ap.add_argument('-o','--annot_dir', default="/app/annotation_results", help='Annot file directory.')
+    test_ap.add_argument('-g','--generate_stats', action='store_true',help='generate the data stats')
+    test_ap.add_argument('-p','--plot',action='store_true', help='plot the annotated images')
+    test_ap.add_argument('-t','--ad_threshold',type=float,default=None,help='AD patch threshold.')
+    test_ap.add_argument('-m','--ad_max',type=float,default=None,help='AD patch max anomaly.')
+    test_ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
+    test_ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
+    test_ap.add_argument('--resize',action='store_true',help='use resize for tiling')
+    
+    convert_ap = subs.add_parser('convert',help='convert model to trt engine')
+    convert_ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
+    convert_ap.add_argument('-o','--export_dir', default="/app/export")
+    convert_ap.add_argument('--hw',type=int,nargs=2,default=None,help='input image shape (h,w). Muse be provided if using tiling')
+    convert_ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
+    convert_ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
+    convert_ap.add_argument('--resize',action='store_true',help='use resize for tiling, otherwise pad zeros')
     ap.add_argument('-v','--version',type=str,default=None,help='Anomalib version v0 or v1.')
 
     args = vars(ap.parse_args())
     action=args['action']
     model_path = args['model_path']
-    export_dir = args['export_dir']
+    
     
     ad = AnomalyModel(model_path, version=args['version'])
     
     if action=='convert':
+        export_dir = args['export_dir']
         os.makedirs(export_dir,exist_ok=True)
         ad.convert(model_path,export_dir)
 
