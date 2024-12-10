@@ -87,7 +87,7 @@ def test_cmds():
     with tempfile.TemporaryDirectory() as t:
         my_env = os.environ.copy()
         my_env['PYTHONPATH'] = f'$PYTHONPATH:{ROOT}/lmi_utils:{ROOT}/anomaly_detectors'
-        cmd = f'python -m anomalib_lmi.anomaly_model2 test -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --tile 224 224 --stride 224 224 --resize'
+        cmd = f'python -m anomalib_lmi.anomaly_model test -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --tile 224 224 --stride 224 224 --resize'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
@@ -98,7 +98,7 @@ def test_cmds():
         assert len(l1) == len(l2)
         
         t2 = os.path.join(t,'recon')
-        cmd = f'python -m anomalib_lmi.anomaly_model2 convert -i {MODEL_PATH} -o {t2} --hw 1120 1120 --tile 224 224 --stride 224 224'
+        cmd = f'python -m anomalib_lmi.anomaly_model convert -i {MODEL_PATH} -o {t2} --hw 1120 1120 --tile 224 224 --stride 224 224'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
