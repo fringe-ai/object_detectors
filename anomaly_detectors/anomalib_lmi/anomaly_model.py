@@ -218,7 +218,7 @@ if __name__ == '__main__':
     convert_ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
     convert_ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
     convert_ap.add_argument('--resize',action='store_true',help='use resize for tiling, otherwise pad zeros')
-    ap.add_argument('-v','--version',type=str,default=None,help='Anomalib version v0 or v1.')
+    ap.add_argument('-v','--version',type=str,default="v0",help='Anomalib version v0 or v1.')
 
     args = vars(ap.parse_args())
     action=args['action']
