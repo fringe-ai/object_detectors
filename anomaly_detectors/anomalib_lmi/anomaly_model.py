@@ -132,7 +132,7 @@ class AnomalyModelPT(Anomalib_Base):
             if not self.loaded:
                 self.pt_model = torch.jit.load(model_path)
                 self.model_shape = [224, 224]
-                self.inference_mode='TS'
+                self.inference_mode='PT'
         except Exception as e:
             self.logger.exception(
                 f"Unable to load pt model using torchscript {e}")
