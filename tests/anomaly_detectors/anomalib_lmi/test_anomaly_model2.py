@@ -19,7 +19,8 @@ sys.path.append(os.path.join(ROOT, 'lmi_utils'))
 sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
-from anomalib_lmi.anomaly_model2 import AnomalyModel2
+# from anomalib_lmi.anomaly_model2 import AnomalyModel2
+from anomalib_lmi.anomaly_model import AnomalyModel
 
 
 logging.basicConfig()
@@ -38,7 +39,7 @@ def test_compare_results_with_anomalib():
     compare prediction results between current implementation and anomalib
     """
     model1 = TorchInferencer(MODEL_PATH)
-    model2 = AnomalyModel2(MODEL_PATH)
+    model2 = AnomalyModel(MODEL_PATH, version='v1')
     paths = glob.glob(os.path.join(DATA_PATH, '*.png'))
     for p in paths:
         # using anomalib code
@@ -63,20 +64,20 @@ def test_compare_results_with_anomalib():
         
         
 def test_warmup():
-    ad = AnomalyModel2(MODEL_PATH,224,112)
+    ad = AnomalyModel(MODEL_PATH,224,112, version='v1')
     ad.warmup()
     ad.warmup([672,640])
     
-    ad = AnomalyModel2(MODEL_PATH)
+    ad = AnomalyModel(MODEL_PATH, version='v1')
     ad.warmup()
     ad.warmup([256,224])
     
     
 def test_model():
-    ad = AnomalyModel2(MODEL_PATH,224,224,'resize')
+    ad = AnomalyModel(MODEL_PATH,224,224,'resize', version='v1')
     ad.test(DATA_PATH, OUTPUT_PATH)
     
-    ad = AnomalyModel2(MODEL_PATH)
+    ad = AnomalyModel(MODEL_PATH, version='v1')
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     
