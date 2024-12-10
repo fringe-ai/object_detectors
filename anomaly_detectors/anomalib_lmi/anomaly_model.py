@@ -214,7 +214,7 @@ if __name__ == '__main__':
     model_path = args['model_path']
     export_dir = args['export_dir']
     
-    ad = AnomalyModel(model_path)
+    ad = AnomalyModel(model_path, version=args['version'])
     
     if action=='convert':
         os.makedirs(export_dir,exist_ok=True)
