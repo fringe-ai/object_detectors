@@ -65,7 +65,6 @@ class AnomalyModelTRT(Anomalib_Base):
         '''
         Desc: Model prediction
         Args: image: numpy array [H,W,Ch]
-
         Note: predict calls the preprocess method
         returns:
             - output: resized output to match training data's size

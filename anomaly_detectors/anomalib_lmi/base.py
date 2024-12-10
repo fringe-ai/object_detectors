@@ -6,7 +6,7 @@ import torch
 import json
 import subprocess
 from abc import ABC, abstractmethod
-
+import torch.nn.functional as F
 import gadget_utils.pipeline_utils as pipeline_utils
 
 
@@ -36,13 +36,19 @@ class Anomalib_Base(ABC):
     
     logger = logging.getLogger('Anomalib Base')
     logger.setLevel(logging.INFO)
-    
     tiler = None
+    inference_mode = None
+    fp16 = False
+
+    if torch.cuda.is_available():
+        device = torch.device('cuda:0')
+    else:
+        logger.warning('GPU device unavailable. Use CPU instead.')
+        device = torch.device('cpu')
     
     @abstractmethod
     def __init__(self) -> None:
-        pass
-    
+        pass    
     
     @torch.inference_mode()
     def from_numpy(self, x):
@@ -50,7 +56,75 @@ class Anomalib_Base(ABC):
         convert numpy array to torch tensor
         """
         return torch.from_numpy(x).to(self.device) if isinstance(x, np.ndarray) else x
+    
+    @torch.inference_mode()
+    def warmup(self,input_hw=None):
+        '''
+        Desc: 
+            Warm up model using a np zeros array with shape matching model input size.
+        Args: 
+            input_hw(int | list, optional): a int if h equals to w, or a list of [h,w]. Need to specify this if using tiling. Otherwise, use model's built-in shape.
+        '''
+        if input_hw is None:
+            input_hw = self.model_shape
+        input_hw = to_list(input_hw)
+        zeros = np.zeros(input_hw+[3,])
+        self.predict(zeros)
 
+    @torch.inference_mode()
+    def preprocess(self, image):
+        '''
+        Desc: Preprocess input image.
+        args:
+            - image: numpy array [H,W,Ch]
+        '''
+        if self.version == 'v0':
+            if self.inference_mode=='TRT':
+                h,w =  self.model_shape
+                img = pipeline_utils.resize_image(self.normalize(image), W=w, H=h)
+                input_dtype = np.float16 if self.fp16 else np.float32
+                input_batch = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0).astype(input_dtype)
+                return self.from_numpy(input_batch)
+            elif self.inference_mode=='PT':
+                processed_image = self.pt_transform(image=image)["image"]
+                if len(processed_image) == 3:
+                    processed_image = processed_image.unsqueeze(0)
+                return processed_image.to(self.device)
+
+            
+        img = self.from_numpy(image).float()
+        
+        # grayscale to rgb
+        if img.ndim == 2:
+            img = img.unsqueeze(-1).repeat(1,1,3)
+            
+        img = img.permute((2, 0, 1)).unsqueeze(0)
+        img = img / 255.0
+        
+        if self.tiler is not None:
+            img = self.tiler.tile(img,self.tile_mode)
+        
+        # resize baked into the pt model
+        batch = img.shape[0]
+        if self.inference_mode=='TRT' and batch != self.batch_size:
+            self.logger.warning(f'Got batch size of {batch},  but trt expects {self.batch_size}. The trt engine might output weird results')
+            img = F.interpolate(img, size=self.model_shape, mode='bilinear')
+        
+        img = img.contiguous()
+        return img.half() if self.fp16 else img
+
+    @torch.inference_mode()
+    def normalize(self,image: np.ndarray) -> np.ndarray:
+        """
+        Desc: Normalize the image to the given mean and standard deviation for consistency with pytorch backbone
+        """
+        image = image.astype(np.float32)
+        mean = (0.485, 0.456, 0.406)
+        std = (0.229, 0.224, 0.225)
+        image /= 255.0
+        image -= mean
+        image /= std
+        return image
 
     def convert_to_onnx(self, export_path, input_hw=None, opset_version=14):
         '''
