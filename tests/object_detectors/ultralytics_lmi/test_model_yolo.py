@@ -13,7 +13,7 @@ sys.path.append(os.path.join(ROOT, 'lmi_utils'))
 sys.path.append(os.path.join(ROOT, 'object_detectors'))
 
 import gadget_utils.pipeline_utils as pipeline_utils
-from ultralytics_lmi.yolo.model import Yolo, YoloObb, YoloPose
+from ultralytics_lmi.model import Yolo, YoloObb, YoloPose
 
 
 logging.basicConfig()
