@@ -12,8 +12,8 @@ from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.utils.torch_utils import smart_inference_mode
 
 # import LMI AI Solutions modules
-import gadget_utils.pipeline_utils as pipeline_utils
 from od_base import ODBase
+import gadget_utils.pipeline_utils as pipeline_utils
 
 
 
