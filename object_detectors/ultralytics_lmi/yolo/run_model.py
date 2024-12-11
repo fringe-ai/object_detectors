@@ -6,7 +6,7 @@ import numpy as np
 import collections
 from tqdm import tqdm
 
-from ultralytics_lmi.model import Yolo, YoloObb, YoloPose
+from ultralytics_lmi.yolo.model import Yolo, YoloObb, YoloPose
 from gadget_utils.pipeline_utils import plot_one_rbox, get_img_path_batches, plot_one_box, resize_image, fit_im_to_size, revert_to_origin, revert_masks_to_origin
 from label_utils.shapes import Rect, Mask
 from label_utils.csv_utils import write_to_csv
