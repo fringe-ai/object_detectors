@@ -7,14 +7,15 @@ This is the tutorial walking through how to train and test YOLOv8 models.
 - [Nvidia Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 
 ### Model training
-- X86
+- x86
 - ubuntu OS
-- labeling tool
+- labeling tools
   - [VGG Image Annotator](https://www.robots.ox.ac.uk/~vgg/software/via/)
   - [Label Studio](https://labelstud.io/)
 
 ### TensorRT on GoMax
-- JetPack 5.0 or 5.1
+- arm
+- JetPack >= 5.0
 
 
 ## Directory structure
@@ -47,8 +48,7 @@ The folder structure below will be created when we go through the tutorial. By c
 ## Create a dockerfile
 Create a file `./dockerfile`. It installs the dependencies and clone LMI_AI_Solutions repository inside the docker container.
 ```docker
-# last version running on ubuntu 20.04, require CUDA 12.1 
-FROM nvcr.io/nvidia/pytorch:23.04-py3
+FROM nvcr.io/nvidia/pytorch:24.04-py3
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install dependencies
@@ -69,7 +69,7 @@ Prepare the dataset by the followings:
 - resize images and labels in csv
 - convert labeling data to YOLO format
 
-**YOLO models require the dimensions of images to be dividable by 32**. In this tutorial, we resize images to 640x320.
+**YOLO models require the dimensions of images to be dividable by 32**. In this tutorial, we resize images to 640x640.
 
 ### Create a script for data processing
 First, create a script `./preprocess/2023-07-19.sh`, which converts labels from label studio json to csv, resizes images, and converts data to yolo format. In the end, it will generate a yolo-formatted dataset in `/app/data/resized_yolo`.
@@ -78,7 +78,7 @@ First, create a script `./preprocess/2023-07-19.sh`, which converts labels from 
 input_path=/app/data/allImages
 # modify the width and height according to your data
 W=640
-H=320
+H=640
 
 # import the repo paths
 source /repos/LMI_AI_Solutions/lmi_ai.env
@@ -131,8 +131,8 @@ docker compose -f docker-compose_preprocess.yaml up
 Once it finishs, the yolo format dataset will be created: `./data/resized_yolo`.
 
 
-## Create a dataset file indicating the location of the dataset and classes
-After converting to yolo format, a dataset yaml file will be created in `./data/resized_yolo/dataset.yaml`. Below is the yaml file.
+## Copy a dataset file indicating the location of the dataset and classes
+After converting to yolo format, a dataset yaml file will be created in `./data/resized_yolo/dataset.yaml`. Copy it as `./config/2023-07-19_dataset.yaml`.
 ```yaml
 path: /app/data # dataset root dir (must use absolute path!)
 train: images  # train images (relative to 'path')
@@ -145,17 +145,23 @@ names: # class names must match with the names in class_map.json
   1: scuff
   2: white
 ```
-Save it as `./config/2023-07-19_dataset.yaml`.
+
+If the dataset contains keypoint labels, a `kpt_shape` key will exist in the yaml file. The first number in the `kpt_shape` is the number of keypoints per image, the second number is the number of elements per keypoint. The example below means each image has one keypoint, which has two elements (x,y).
+```yaml
+kpt_shape:
+- 1
+- 2
+```
 
 
 ## Train the model
 To train the model, we need to create a hyperparameter yaml file and create a `./docker-compose_train.yaml` file.
 
 ### Create a hyperparameter file
-Crete a file `./config/2023-07-19_train.yaml`. Below shows an example of training a **medium-size yolov8 instance segmentation model** with the image size of 640. To train object detection models, set `task` to `detect`.
+Crete a file `./config/2023-07-19_train.yaml`. Below shows an example of training a **medium-size yolov8 instance segmentation model** with the image size of 640. To train object detection models, set `task` to `detect`. To train keypoint detection models, set it to `pose`.
 ```yaml
-task: segment  # (str) YOLO task, i.e. detect, segment, classify, pose, where classify, pose are NOT tested
-mode: train  # (str) YOLO mode, i.e. train, predict, export, val, track, benchmark, where track, benchmark are NOT tested
+task: segment  # (str) YOLO task, i.e. detect, segment, classify, pose
+mode: train  # (str) YOLO mode, i.e. train, predict, export, val, track, benchmark
 
 # training settings
 epochs: 300  # (int) number of epochs
@@ -163,7 +169,7 @@ batch: 16  # (int) number of images per batch (-1 for AutoBatch)
 model: yolov8m-seg.pt # (str) one of yolov8n.pt, yolov8m.pt, yolov8l.pt, yolov8x.pt, yolov8n-seg.pt, yolov8m-seg.pt, yolov8l-seg.pt, yolov8x-seg.pt
 imgsz: 640  # (int) input images size, use the larger dimension if rectangular image
 patience: 50  # (int) epochs to wait for no observable improvement for early stopping of training
-rect: True  # (bool) use rectangular images for training if mode='train' or rectangular validation if mode='val'
+rect: False  # (bool) use rectangular images for training if mode='train' or rectangular validation if mode='val'
 exist_ok: False  # (bool) whether to overwrite existing training folder
 resume: False  # (bool) resume training from last checkpoint
 
@@ -215,7 +221,11 @@ Spin up the docker containers to train the model as shown in [spin-up-the-contai
 ### Monitor the training progress (optional)
 While the training process is running, open another terminal. 
 ```bash
-# Log in the container which hosts the training process
+# shows what containers are currently running
+docker ps 
+
+# Log into the container which hosts the training process
+# Replace the CONTAINER_ID with actual container ID
 docker exec -it CONTAINER_ID bash 
 
 # track the training progress using tensorboard
@@ -232,7 +242,7 @@ task: segment  # (str) YOLO task, i.e. detect, segment, classify, pose, where cl
 mode: predict  # (str) YOLO mode, i.e. train, predict, export, val, track, benchmark, where track, benchmark are NOT tested
 
 # Prediction settings 
-imgsz: 320,640 # (list) input images size as list[h,w] for predict and export modes
+imgsz: 640,640 # (list) input images size as list[h,w] for predict and export modes
 conf:  # (float, optional) object confidence threshold for detection (default 0.25 predict, 0.001 val)
 max_det: 300  # (int) maximum number of detections per image
 
@@ -292,7 +302,7 @@ mode: export  # (str) YOLO mode, i.e. train, predict, export, val, track, benchm
 # Export settings 
 format: engine  # (str) format to export to, choices at https://docs.ultralytics.com/modes/export/#export-formats
 half: True  # (bool) use half precision (FP16)
-imgsz: 320,640 # (list) input images size as list[h,w] for predict and export modes
+imgsz: 640,640 # (list) input images size as list[h,w] for predict and export modes
 device: 0 # (int | str | list, optional) device to run on, i.e. cuda device=0 or device=0,1,2,3 or device=cpu
 
 # less likely used settings 
