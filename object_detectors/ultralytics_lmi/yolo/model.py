@@ -12,10 +12,7 @@ from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.utils.torch_utils import smart_inference_mode
 
 # import LMI AI Solutions modules
-try:
-    from od_base import ODBase
-except ImportError:
-    from object_detectors.od_base import ODBase
+from od_base import ODBase
 import gadget_utils.pipeline_utils as pipeline_utils
 
 
