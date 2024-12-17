@@ -8,9 +8,10 @@ import torch
 import torch.nn.functional as F
 from torchvision.transforms import v2
 
-from anomalib_lmi.base import Anomalib_Base, to_list
-# import gadget_utils.pipeline_utils as pipeline_utils
-from image_utils.tiler import Tiler, ScaleMode
+from .base import Anomalib_Base, to_list
+from .tiler import Tiler, ScaleMode
+import gadget_utils.pipeline_utils as pipeline_utils
+# from image_utils.tiler import Tiler, ScaleMode
 
 
 logging.basicConfig()
