@@ -217,7 +217,7 @@ if __name__ == '__main__':
     model_path = args['model_path']
     
     mode = 'resize' if args['resize'] else 'padding'
-    ad = AnomalyModel2(model_path,args['tile'],args['stride'],mode)
+    ad = AnomalyModelNew(model_path,args['tile'],args['stride'],mode)
     
     if action=='convert':
         export_dir = args['export_dir']
