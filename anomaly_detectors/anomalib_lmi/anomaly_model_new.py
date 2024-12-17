@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torchvision.transforms import v2
 
 from .base import Anomalib_Base, to_list
-from .tiler import Tiler, ScaleMode
+# from .tiler import Tiler, ScaleMode
 import gadget_utils.pipeline_utils as pipeline_utils
 # from image_utils.tiler import Tiler, ScaleMode
 
