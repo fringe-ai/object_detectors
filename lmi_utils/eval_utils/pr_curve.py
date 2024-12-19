@@ -78,14 +78,14 @@ def polygon_ious(polygons_1, polygons_2):
     return ious
 
 
-def precision_recall(label_dt:dict, pred_dt:dict, class_map:dict, threshold_iou=0.5, threshold_conf=0.1, skip_classes=[], image_level=False):
+def precision_recall(label_dt:dict, pred_dt:dict, class_map:dict, iou=0.5, threshold_conf=0.1, skip_classes=[], image_level=False):
     """
     calculate the precision and recall based on the threshold of iou and confidence
     arguments:
         label_dt: the map <fname, list of Shapes> from label annotations
         pred_dt: the map <fname, list of Shapes> from prediction
         class_map: the map <class, class id>
-        threshold_iou: iou threshold, default=0.5
+        iou: iou threshold, default=0.5
         threshold_conf: confidence threshold, default=0.1
     return:
         P: the map <class: class's precision>
@@ -124,14 +124,14 @@ def precision_recall(label_dt:dict, pred_dt:dict, class_map:dict, threshold_iou=
         bbox_label = np.array([shape.up_left+shape.bottom_right for shape in label_dt[fname] if isinstance(shape, Rect) ])
         class_label = np.array([shape.category for shape in label_dt[fname] if isinstance(shape, Rect) ])
         # mask: [[x1,y1],[x2,y2] ...]
-        mask_pred = np.array(mask_to_np(pred_dt[fname]),np.object)
+        mask_pred = np.array(mask_to_np(pred_dt[fname]),object)
         conf = np.array([shape.confidence for shape in pred_dt[fname] if isinstance(shape, Mask) ])
         class_pred = np.array([shape.category for shape in pred_dt[fname] if isinstance(shape, Mask) ])
         if len(mask_pred):
             # found masks
             is_mask = 1
             # convert label bbox to masks
-            mask_label = np.array(mask_to_np(label_dt[fname]) + bboxs_to_np(bbox_label),np.object)
+            mask_label = np.array(mask_to_np(label_dt[fname]) + bboxs_to_np(bbox_label),object)
             mask_class_label = np.array([shape.category for shape in label_dt[fname] if isinstance(shape, Mask) ])
             class_label = np.concatenate((mask_class_label,class_label))
         else:
@@ -179,8 +179,8 @@ def precision_recall(label_dt:dict, pred_dt:dict, class_map:dict, threshold_iou=
                 ious = polygon_ious(mask_pred[m_pred], mask_label[m_label])
             else:
                 ious = bbox_iou(bbox_pred[m_pred,:], bbox_label[m_label,:])
-            M = np.max(ious, axis=1) >= threshold_iou
-            N = np.max(ious, axis=0) < threshold_iou
+            M = np.max(ious, axis=1) >= iou
+            N = np.max(ious, axis=0) < iou
 
             if N.sum():
                 FN_im[c] += 1
@@ -193,7 +193,7 @@ def precision_recall(label_dt:dict, pred_dt:dict, class_map:dict, threshold_iou=
             TP[c] += M.sum()
             FP[c] += (~M).sum()
 
-    print(f'threshold_iou: {threshold_iou}, threshold_conf: {threshold_conf}')
+    print(f'iou: {iou}, threshold_conf: {threshold_conf}')
     #calcualte precision and recall
     epsilon=1e-16
     P,R = {},{}
@@ -221,13 +221,13 @@ def precision_recall(label_dt:dict, pred_dt:dict, class_map:dict, threshold_iou=
     return P,R,Err
 
 
-def plot_curve(px, dt_y, save_dir='my_curve.png', xlabel='Confidence', ylabel='Metric', y_range=[0, 1.1], step=0.1, threshold_iou=0.5):
+def plot_curve(px, dt_y, save_dir='my_curve.png', xlabel='Confidence', ylabel='Metric', y_range=[0, 1.1], step=0.1, iou=0.5):
     # Metric-confidence curve
     fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
 
     for k in dt_y:
         if k=='all':
-            ax.plot(px, dt_y['all'], linewidth=3, color='blue', label=f'all classes @ iou_threshold={threshold_iou}')
+            ax.plot(px, dt_y['all'], linewidth=3, color='blue', label=f'all classes @ iou_threshold={iou}')
         else:
             ax.plot(px, dt_y[k], linewidth=1, label=f'{k}')  # plot(confidence, metric)
 
@@ -246,13 +246,13 @@ if __name__ == '__main__':
     parse = argparse.ArgumentParser()
     parse.add_argument('--model_csv', required=True, help='the path to the model prediction csv')
     parse.add_argument('--label_csv', required=True, help='the path to the ground truth csv')
-    parse.add_argument('--path_out', required=True, help='the output path for storing Precision and Recall figures')
+    parse.add_argument('-o','--path_out', required=True, help='the output path for storing Precision and Recall figures')
     parse.add_argument('--skip_classes', default='', help='skip calculating the P/R curves for these comma separated classes')
-    parse.add_argument('--threshold_iou', type=float, default=0.5, help='[optional] the iou threshold, default=0.5')
+    parse.add_argument('--iou', type=float, default=0.5, help='[optional] the iou threshold, default=0.5')
     parse.add_argument('--image_level', action='store_true', help='[optional] calculate the precision and recall on image level')
     args = vars(parse.parse_args())
 
-    threshold_iou = args['threshold_iou']
+    iou = args['iou']
     model_csv = args['model_csv']
     label_csv = args['label_csv']
     out_path = args['path_out']
@@ -278,7 +278,7 @@ if __name__ == '__main__':
     Ps,Rs = collections.defaultdict(list),collections.defaultdict(list)
     Errs = collections.defaultdict(list)
     for conf in X:
-        P,R,err = precision_recall(label_dt,pred_dt,class_map,threshold_iou,conf,skip_classes,image_level)
+        P,R,err = precision_recall(label_dt,pred_dt,class_map,iou,conf,skip_classes,image_level)
         for c in P:
             Ps[c].append(P[c])
         for c in R:
@@ -289,7 +289,7 @@ if __name__ == '__main__':
     postfix = ''
     if image_level:
         postfix = '_im_level'
-    plot_curve(X, Ps, save_dir=os.path.join(out_path,'precision'+postfix+'.png'), ylabel='Precision', threshold_iou=threshold_iou, step=0.05)
-    plot_curve(X, Rs, save_dir=os.path.join(out_path,'recall'+postfix+'.png'), ylabel='Recall', threshold_iou=threshold_iou, step=0.05)
-    #plot_curve(X, Errs, save_dir=os.path.join(out_path,'error_rate_im_level.png'), ylabel='Error Rate (%) on image level', threshold_iou=threshold_iou, y_range=[0,20.1], step=1)
+    plot_curve(X, Ps, save_dir=os.path.join(out_path,'precision'+postfix+'.png'), ylabel='Precision', iou=iou, step=0.05)
+    plot_curve(X, Rs, save_dir=os.path.join(out_path,'recall'+postfix+'.png'), ylabel='Recall', iou=iou, step=0.05)
+    #plot_curve(X, Errs, save_dir=os.path.join(out_path,'error_rate_im_level.png'), ylabel='Error Rate (%) on image level', iou=iou, y_range=[0,20.1], step=1)
     print(f'Precision and Recall figures are saved in {out_path}')

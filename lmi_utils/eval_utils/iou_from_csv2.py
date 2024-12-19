@@ -1,17 +1,20 @@
-from gc import collect
 import os
 import numpy as np
 import collections
-import matplotlib.pyplot as plt
 from shapely.geometry import Polygon
 from shapely.validation import make_valid
-import sys
 import csv
 import cv2
+import logging
 
 #LMI packages
 from label_utils import csv_utils
 from label_utils.shapes import Rect, Mask
+
+
+logging.basicConfig()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def bbox_iou(bbox1, bbox2):
@@ -59,8 +62,7 @@ def polygon_iou(polygon_1, polygon_2):
         poly_1 = Polygon(polygon_1)
         poly_2 = Polygon(polygon_2)
     except Exception as e:
-        #usually less than 3 points for creating the polygons
-        #print(e)
+        logger.exception('Failed to create shapely.polygon. It might contain less than 3 points to create the polygon')
         return 0
 
     if not poly_1.is_valid:
@@ -101,7 +103,7 @@ def plot_shapes(image, shape_label, class_label, shape_pred, class_pred, skip_cl
             
     def plot_masks(image, masks, labels, color:tuple, pos='uleft'):
         for i in range(len(masks)):
-            pts = masks[i].astype(np.int)
+            pts = masks[i].astype(int)
             label = labels[i]
             if label in skip_classes:
                 continue
@@ -160,7 +162,7 @@ def get_ious(path_imgs:str,path_out:str,label_dt:dict, pred_dt:dict, skip_classe
         is_mask = 0
         I = cv2.imread(os.path.join(path_imgs,fname))
         if not label_dt[fname]:
-            print(f'[warning] cannot find corresponding labels for the file: {fname}')
+            logger.warning(f'Not found corresponding labels for the file: {fname}. skip')
             bbox_label = np.empty((0,4))
             bbox_pred = np.empty((0,4))
             class_label = np.empty((0,))
@@ -176,7 +178,7 @@ def get_ious(path_imgs:str,path_out:str,label_dt:dict, pred_dt:dict, skip_classe
                 # found masks
                 is_mask = 1
                 # convert label bbox to masks
-                mask_label = np.array(mask_to_np(label_dt[fname]) + bboxs_to_np(bbox_label),np.object)
+                mask_label = np.array(mask_to_np(label_dt[fname]) + bboxs_to_np(bbox_label),object)
                 mask_class_label = np.array([shape.category for shape in label_dt[fname] if isinstance(shape, Mask) ])
                 class_label = np.concatenate((mask_class_label,class_label))
             else:
@@ -195,7 +197,7 @@ def get_ious(path_imgs:str,path_out:str,label_dt:dict, pred_dt:dict, skip_classe
         if I is not None:
             cv2.imwrite(os.path.join(path_out,outname),I)
         else:
-            print(f'[warning] cannot find image: {fname}')
+            logger.warning(f'Not found image: {fname}')
 
         # get iou
         class_to_iou = {}
@@ -257,10 +259,10 @@ def write_to_csv(all_ious:dict, mean_ious:dict, filename:str):
 if __name__ == '__main__':
     import argparse
     parse = argparse.ArgumentParser(description='Get the IOU and save to file. Right now, it does NOT support mixed polygons and bboxs in csv files.')
-    parse.add_argument('--path_imgs', required=True, help='the path to the images')
+    parse.add_argument('-i','--path_imgs', required=True, help='the path to the images')
     parse.add_argument('--model_csv', required=True, help='the path to the model prediction csv')
     parse.add_argument('--label_csv', required=True, help='the path to the ground truth csv')
-    parse.add_argument('--path_out', required=True, help='the output path')
+    parse.add_argument('-o','--path_out', required=True, help='the output path')
     parse.add_argument('--skip_classes', default='', help='skip calculating ious for these comma separated classes')
     args = vars(parse.parse_args())
 
@@ -284,8 +286,8 @@ if __name__ == '__main__':
         os.makedirs(path_out)
 
     label_dt,class_map = csv_utils.load_csv(label_csv)
-    print(f'found class map: {class_map}')
-    print(f'skipped classes: {skip_classes}')
+    logger.info(f'found class map: {class_map}')
+    logger.info(f'skipped classes: {skip_classes}')
     pred_dt,_ = csv_utils.load_csv(model_csv, class_map=class_map)
 
     all_ious, all_not_nan_ious = get_ious(path_imgs,path_out,label_dt,pred_dt,skip_classes)
