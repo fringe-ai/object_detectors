@@ -117,8 +117,9 @@ RUN pip install --user 'git+https://github.com/facebookresearch/fvcore'
 RUN git clone https://github.com/facebookresearch/detectron2 detectron2
 RUN pip install --user -e detectron2 
 RUN pip install tensorboard
-RUN git clone -b FAIE-1767-v0.0.6 https://github.com/lmitechnologies/LMI_AI_Solutions.git
+RUN git clone -b ais https://github.com/lmitechnologies/LMI_AI_Solutions.git
 RUN pip install onnx-graphsurgeon onnxruntime
+RUN pip install numba
 ```
 
 #### Train
