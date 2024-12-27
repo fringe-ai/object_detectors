@@ -255,20 +255,20 @@ class Detectron2TRT(ODBase):
                     (image_h, image_w,),
                     mask_threshold
                 )
-                if len(operators) > 0:
+                if len(operators) > 0 and batch_masks is not []:
                     batch_masks = np.array([
-                        revert_mask_to_origin(mask.cpu().numpy(), operators) for mask in batch_masks
+                        revert_mask_to_origin(mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask, operators) for mask in batch_masks
                     ])
-                if kwargs.get("return_segments", False):
+                if kwargs.get("return_segments", False) and batch_masks is not []:
                     if len(operators) > 0:
                         batch_segments = [
                             revert_to_origin(mask_to_polygon_cv2(
-                                mask.cpu().numpy()
+                                mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask
                             ), operators) for mask in batch_masks
                         ]
                     else:
                         batch_segments = [
-                            mask_to_polygon_cv2(mask.cpu().numpy()) for mask in batch_masks
+                            mask_to_polygon_cv2(mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask) for mask in batch_masks
                         ]
                     
             else:
@@ -481,11 +481,11 @@ class Detectron2PT(ODBase):
                 if process_masks:
                     batch_masks = rescale_masks(batch_masks.to(self.device).squeeze(1), batch_boxes.to(self.device), (image_h,image_w,), mask_threshold)
                     
-                    if len(operators) > 0 and batch_masks.shape[0] > 0:
+                    if len(operators) > 0 and batch_masks is not []:
                         batch_masks = np.array([
                                 revert_mask_to_origin(mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask ,operators) for mask in batch_masks
                         ])
-                    if kwargs.get("return_segments", False) and batch_masks.shape[0] > 0:
+                    if kwargs.get("return_segments", False) and batch_masks is not []:
                         if len(operators) > 0:
                             batch_segments = [
                                 revert_to_origin(mask_to_polygon_cv2(
