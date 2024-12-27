@@ -476,7 +476,7 @@ class Detectron2PT(ODBase):
             batch_scores = batch_scores[keep]
             batch_classes = batch_classes[keep]
             batch_boxes = output["pred_boxes"][keep]
-            if 'pred_masks' in output:
+            if 'pred_masks' in output and process_masks:
                 batch_masks = output["pred_masks"][keep]
                 if process_masks:
                     batch_masks = rescale_masks(batch_masks.to(self.device).squeeze(1), batch_boxes.to(self.device), (image_h,image_w,), mask_threshold)
