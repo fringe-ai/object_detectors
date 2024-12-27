@@ -39,7 +39,7 @@ except ImportError:
     )
     sys.exit(1)
 
-import onnx_utils
+import detectron2_lmi.converter.onnx_utils
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("ModelHelper").setLevel(logging.INFO)
@@ -196,7 +196,7 @@ class DET2GraphSurgeon:
 
         # Image preprocessing.
         input_im = cv2.imread(sample_image)
-        print(input_im.shape)
+        input_im = cv2.cvtColor(input_im, cv2.COLOR_BGR2RGB)
         raw_height, raw_width = input_im.shape[:2]
         image = predictor.aug.get_transform(input_im).apply_image(input_im)
         image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
@@ -245,7 +245,6 @@ class DET2GraphSurgeon:
         self.graph.cleanup().toposort()
         model = gs.export_onnx(self.graph)
         output_path = os.path.realpath(output_path)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         onnx.save(model, output_path)
         log.info("Saved ONNX model to {}".format(output_path))
 
@@ -826,67 +825,68 @@ class DET2GraphSurgeon:
         self.sanitize()
 
 
-def main(args):
-    det2_gs = DET2GraphSurgeon(args.exported_onnx, args.det2_config, args.det2_weights)
-    det2_gs.update_preprocessor(args.batch_size)
-    anchors = det2_gs.get_anchors(args.sample_image)
-    det2_gs.process_graph(anchors, args.first_nms_threshold, args.second_nms_threshold)
-    det2_gs.save(args.onnx)
+def onnx_gs(args):
+    # det2_gs = DET2GraphSurgeon(args.exported_onnx, args.det2_config, args.det2_weights)
+    det2_gs = DET2GraphSurgeon(args.get('onnx_file_path'), args.get('config_file'), args.get('weights'))
+    det2_gs.update_preprocessor(args.get('batch_size'))
+    anchors = det2_gs.get_anchors(args.get('sample_image'))
+    det2_gs.process_graph(anchors, args.get('first_nms_threshold', None), args.get('second_nms_threshold', None))
+    det2_gs.save(args.get('onnx_file_path'))
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--exported_onnx",
-        help="The exported to ONNX Detectron 2 Mask R-CNN",
-        type=str,
-        default="/home/weights/onnx/model.onnx",
-    )
-    parser.add_argument(
-        "-o", "--onnx", help="The output ONNX model file to write", type=str, default="/home/weights/onnx/exported.onnx",
-    )
-    parser.add_argument(
-        "-c",
-        "--det2_config",
-        help="The Detectron 2 config file (.yaml) for the model",
-        type=str,
-        default="/home/weights/config.yaml",
-    )
-    parser.add_argument(
-        "-w", "--det2_weights", help="The Detectron 2 model weights (.pkl)", type=str, default="/home/weights/model_final.pth",
-    )
-    parser.add_argument(
-        "-s", "--sample_image", help="Sample image for anchors generation", type=str, default="/home/weights/sample_image.png",
-    )
-    parser.add_argument(
-        "-b", "--batch_size", help="Batch size for the model", type=int, default=1
-    )
-    parser.add_argument(
-        "-t1",
-        "--first_nms_threshold",
-        help="Override the score threshold for the 1st NMS operation",
-        type=float,
-    )
-    parser.add_argument(
-        "-t2",
-        "--second_nms_threshold",
-        help="Override the score threshold for the 2nd NMS operation",
-        type=float,
-    )
-    args = parser.parse_args()
-    if not all(
-        [
-            args.exported_onnx,
-            args.onnx,
-            args.det2_config,
-            args.det2_weights,
-            args.sample_image,
-        ]
-    ):
-        parser.print_help()
-        print(
-            "\nThese arguments are required: --exported_onnx --onnx --det2_config --det2_weights and --sample_image"
-        )
-        sys.exit(1)
-    main(args)
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument(
+#         "-i",
+#         "--exported_onnx",
+#         help="The exported to ONNX Detectron 2 Mask R-CNN",
+#         type=str,
+#         default="/home/weights/det2onnx.onnx",
+#     )
+#     parser.add_argument(
+#         "-o", "--onnx", help="The output ONNX model file to write", type=str, default="/home/weights/model.onnx",
+#     )
+#     parser.add_argument(
+#         "-c",
+#         "--det2_config",
+#         help="The Detectron 2 config file (.yaml) for the model",
+#         type=str,
+#         default="/home/weights/config.yaml",
+#     )
+#     parser.add_argument(
+#         "-w", "--det2_weights", help="The Detectron 2 model weights (.pkl)", type=str, default="/home/weights/model_final.pth",
+#     )
+#     parser.add_argument(
+#         "-s", "--sample_image", help="Sample image for anchors generation", type=str, default="/home/weights/sample_image.png",
+#     )
+#     parser.add_argument(
+#         "-b", "--batch_size", help="Batch size for the model", type=int, default=1
+#     )
+#     parser.add_argument(
+#         "-t1",
+#         "--first_nms_threshold",
+#         help="Override the score threshold for the 1st NMS operation",
+#         type=float,
+#     )
+#     parser.add_argument(
+#         "-t2",
+#         "--second_nms_threshold",
+#         help="Override the score threshold for the 2nd NMS operation",
+#         type=float,
+#     )
+#     args = parser.parse_args()
+#     if not all(
+#         [
+#             args.exported_onnx,
+#             args.onnx,
+#             args.det2_config,
+#             args.det2_weights,
+#             args.sample_image,
+#         ]
+#     ):
+#         parser.print_help()
+#         print(
+#             "\nThese arguments are required: --exported_onnx --onnx --det2_config --det2_weights and --sample_image"
+#         )
+#         sys.exit(1)
+#     onnx_exporter(args)

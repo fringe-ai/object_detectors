@@ -28,19 +28,18 @@ import cv2
 
 logger = setup_logger()
 
-def setup_cfg(config_file, opts=None):
+def setup_cfg(args):
     cfg = get_cfg()
     # cuda context is initialized before creating dataloader, so we don't fork anymore
     cfg.DATALOADER.NUM_WORKERS = 0
     add_pointrend_config(cfg)
-    cfg.merge_from_file(config_file)
-    if opts is not None:
-        cfg.merge_from_list(args.opts)
+    cfg.merge_from_file(args.get('config_file'))
     cfg.freeze()
     return cfg
 
+
 # experimental. API not yet final
-def export_scripting(torch_model, output_dir):
+def export_scripting(torch_model, args):
     assert TORCH_VERSION >= (1, 8)
     fields = {
         "proposal_boxes": Boxes,
@@ -52,7 +51,6 @@ def export_scripting(torch_model, output_dir):
         "pred_keypoints": torch.Tensor,
         "pred_keypoint_heatmaps": torch.Tensor,
     }
-    
 
     class ScriptableAdapterBase(nn.Module):
         # Use this adapter to workaround https://github.com/pytorch/pytorch/issues/46944
@@ -77,15 +75,15 @@ def export_scripting(torch_model, output_dir):
                 return [i.get_fields() for i in instances]
 
     ts_model = scripting_with_instances(ScriptableAdapter(), fields)
-    with PathManager.open(os.path.join(output_dir, "model.pt"), "wb") as f:
+    with PathManager.open(args.get(f'pt_file_path'), "wb") as f:
         torch.jit.save(ts_model, f)
-    dump_torchscript_IR(ts_model, output_dir)
+    # dump_torchscript_IR(ts_model, args.get('output'))
     # TODO inference in Python now missing postprocessing glue code
     return None
 
 
 # experimental. API not yet final
-def export_tracing(torch_model, inputs, output_dir, format="torchscript"):
+def export_tracing(torch_model, inputs, args):
     assert TORCH_VERSION >= (1, 8)
     image = inputs[0]["image"]
     inputs = [{"image": image}]  # remove other unused keys
@@ -102,16 +100,18 @@ def export_tracing(torch_model, inputs, output_dir, format="torchscript"):
 
     traceable_model = TracingAdapter(torch_model, inputs, inference)
 
-    ts_model = torch.jit.trace(traceable_model, (image,))
-    with PathManager.open(os.path.join(output_dir, "model.pt"), "wb") as f:
-        torch.jit.save(ts_model, f)
-    dump_torchscript_IR(ts_model, output_dir)
-    with PathManager.open(os.path.join(output_dir, "det2onnx.onnx"), "wb") as f:
+    if args.get('format') == "tracing":
+        ts_model = torch.jit.trace(traceable_model, (image,))
+        with PathManager.open(args.get('pt_file_path'), "wb") as f:
+            torch.jit.save(ts_model, f)
+    if args.get('format') == "onnx":
+        with PathManager.open(args.get('onnx_file_path'), "wb") as f:
             torch.onnx.export(traceable_model, (image,), f, opset_version=STABLE_ONNX_OPSET_VERSION)
-    
     logger.info("Inputs schema: " + str(traceable_model.inputs_schema))
     logger.info("Outputs schema: " + str(traceable_model.outputs_schema))
 
+    if args.get('format') != "torchscript":
+        return None
     if not isinstance(torch_model, (GeneralizedRCNN, RetinaNet)):
         return None
 
@@ -128,20 +128,18 @@ def export_tracing(torch_model, inputs, output_dir, format="torchscript"):
     return eval_wrapper
 
 
-def get_sample_inputs(cfg, use_train: bool = False, sample_image: str = None):
+def get_sample_inputs(args,cfg):
 
-    if sample_image is None:
+    if args.get('sample_image', None) is None:
         # get a first batch from dataset
-        if use_train:
-            data_loader = build_detection_test_loader(cfg, cfg.DATASETS.TRAIN[0])
-        else:
-            data_loader = build_detection_test_loader(cfg, cfg.DATASETS.TEST[0])
+        data_loader = build_detection_test_loader(cfg, cfg.DATASETS.TEST[0])
         first_batch = next(iter(data_loader))
         return first_batch
     else:
         # get a sample data
-        original_image = cv2.imread(sample_image)
-        print(f"Processing image {sample_image}")
+        original_image = cv2.imread(args.get('sample_image', None))
+        original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+        print(f"Processing image {args.get('sample_image', None)}")
         print(f"Image size (h,w): {original_image.shape[:2]}")
         aug = T.ResizeShortestEdge(
             [original_image.shape[0], original_image.shape[0]], original_image.shape[0]
@@ -156,55 +154,45 @@ def get_sample_inputs(cfg, use_train: bool = False, sample_image: str = None):
         sample_inputs = [inputs]
         return sample_inputs
 
-
-def main() -> None:
-    global logger, cfg, args
-    parser = argparse.ArgumentParser(description="Export a model for deployment.")
-    parser.add_argument(
-        "--format",
-        choices=["caffe2", "onnx", "torchscript"],
-        help="output format",
-        default="onnx",
-    )
-    parser.add_argument(
-        "--export-method",
-        choices=["caffe2_tracing", "tracing", "scripting"],
-        help="Method to export models",
-        default="tracing",
-    )
-    parser.add_argument("--config-file", metavar="FILE", help="path to config file", default='/home/weights/config.yaml')
-    parser.add_argument("--sample-image", type=str, help="sample image for input", default='/home/weights/sample_image.png')
-    parser.add_argument("--run-eval", action="store_true")
-    parser.add_argument("--output", help="output directory for the converted model", default='/home/weights/onnx')
-    parser.add_argument(
-        "opts",
-        help="Modify config options using the command-line",
-        default=None,
-        nargs=argparse.REMAINDER,
-    )
-    args = parser.parse_args()
-    logger = setup_logger()
-    logger.info("Command line arguments: " + str(args))
-    PathManager.mkdirs(args.output)
+def det2export(args) -> None:
     # Disable re-specialization on new shapes. Otherwise --run-eval will be slow
     torch._C._jit_set_bailout_depth(1)
 
-    cfg = setup_cfg(args.config_file, args.opts)
+    cfg = setup_cfg(args)
 
     # create a torch model
     torch_model = build_model(cfg)
-    cfg.merge_from_list(["MODEL.WEIGHTS", '/home/weights/model_final.pth'])
+    cfg.merge_from_list(["MODEL.WEIGHTS", args.get('weights')])
+        
+        
     DetectionCheckpointer(torch_model).resume_or_load(cfg.MODEL.WEIGHTS)
     torch_model.eval()
 
     # convert and save model
-    if args.export_method == "scripting":
-        exported_model = export_scripting(torch_model, get_sample_inputs(cfg, use_train=False, sample_image=args.sample_image))
-    elif args.export_method == "tracing":
-        exported_model = export_tracing(torch_model, get_sample_inputs(cfg, use_train=False, sample_image=args.sample_image), args.format)
+    if args.get('format') == "pt":
+        exported_model = export_scripting(torch_model, args)
+    elif args.get('format') == "onnx":
+        sample_inputs = get_sample_inputs(args, cfg)
+        exported_model = export_tracing(torch_model, sample_inputs, args)
 
     logger.info("Success.")
+    return None
 
 
 if __name__ == "__main__":
-    main()  # pragma: no cover
+    parser = argparse.ArgumentParser(description="Export a model for deployment.")
+    parser.add_argument(
+        "--format",
+        choices=["onnx", "pt"],
+        help="output format",
+        default="onnx",
+    )
+    parser.add_argument('-c',"--config-file",metavar="FILE", help="path to config file", default='/home/weights/config.yaml')
+    parser.add_argument('-o','--output',help="output directory for the converted model", default='/home/weights')
+    parser.add_argument(
+        "-w", "--weights", help="The Detectron 2 model weights (.pkl)", type=str, default="/home/weights/model_final.pth",
+    )
+    parser.add_argument(
+        "-s", "--sample_image", help="Sample image for anchors generation/predictions", type=str, default="/home/weights/sample_image.png",
+    )
+    

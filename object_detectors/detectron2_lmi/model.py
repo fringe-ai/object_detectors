@@ -1,32 +1,68 @@
 from typing import Dict, List
-from model_base import ModelBase
+from od_base import ODBase
 import tensorrt as trt
 from cuda import cudart
 import numpy as np
 import detectron2_lmi.utils.common_runtime as common
-from gadget_utils.pipeline_utils import plot_one_box, revert_to_origin
-from postprocess_utils.mask_utils import rescale_masks,mask_to_polygon
+from gadget_utils.pipeline_utils import plot_one_box, revert_to_origin, revert_mask_to_origin
+from postprocess_utils.mask_utils import rescale_masks,mask_to_polygon_cv2
 import cv2
 import logging
 import torch
+from detectron2.modeling.postprocessing import detector_postprocess
+import torchvision
 
 import time
 
+class Detectron2Model(ODBase):
+    """
+    Detectron2Model is a factory class for creating object detection models based on the Detectron2 framework.
+    Attributes:
+        _registry (dict): A dictionary that maps file extensions to their corresponding model wrapper classes.
+    Methods:
+        register(format):
+            Registers a model wrapper class for a specific file format.
+            Args:
+                format (str): The file extension format to register the wrapper class for.
+            Returns:
+                function: A decorator function that registers the wrapper class.
+        __new__(cls, model_path, class_map, *args, **kwargs):
+            Creates an instance of the appropriate model wrapper class based on the file extension of the model_path.
+            Args:
+                model_path (str): The file path to the model file.
+                class_map (dict): A dictionary mapping class IDs to class names.
+                *args: Additional positional arguments to pass to the model wrapper class.
+                **kwargs: Additional keyword arguments to pass to the model wrapper class.
+            Returns:
+                object: An instance of the appropriate model wrapper class.
+            Raises:
+                ValueError: If the file extension of model_path is not registered.
+    """
+    _registry = {}
 
-class Detectron2ModelFactory:
-    @staticmethod
-    def load_model(model_path, class_map):
-        if model_path.endswith(".ts"):
-            return Detectron2Torchscript(model_path, class_map)
-        elif model_path.endswith(".engine"):
-            return Detectron2TRT(model_path, class_map)
-        else:
-            raise NotImplementedError(f"Model type not supported: {model_path}")
+    @classmethod
+    def register(cls, format):
+        def decorator(wrapper_cls):
+            cls._registry[format] = wrapper_cls
+            return wrapper_cls
+        return decorator
+    
+    def __new__(cls, model_path, class_map, *args,**kwargs):
+        ext = model_path.split(".")[-1]
+        wrapper_cls = cls._registry.get(ext)
+        if wrapper_cls is None:
+            raise ValueError("Invalid model file extension")
+        
+        return wrapper_cls(model_path, class_map, *args, **kwargs)
     
 
-class Detectron2TRT(ModelBase):
-    logger = logging.getLogger(__name__)
-    def __init__(self, model_path, class_map):
+@Detectron2Model.register("engine")
+class Detectron2TRT(ODBase):
+    
+    logger = logging.getLogger('Detectron2TRT')
+    logger.setLevel(logging.INFO)
+    
+    def __init__(self, model_path, class_map, device='cuda', **kwargs):
         """
         Initialize the Detectron2 model with TensorRT engine.
         Args:
@@ -54,6 +90,7 @@ class Detectron2TRT(ModelBase):
         self.model_inputs = []
         self.model_outputs = []
         self.allocations = []
+        self.device = torch.device(device)
         for i in range(self.engine.num_io_tensors):
             name = self.engine.get_tensor_name(i)
             is_input = False
@@ -149,7 +186,7 @@ class Detectron2TRT(ModelBase):
             common.memcpy_device_to_host(outputs[o], self.model_outputs[o]["allocation"])
         return outputs
     
-    def postprocess(self, images, predictions,operators=[], **kwargs):
+    def postprocess(self, images, predictions, **kwargs):
         """
         Post-process the predictions from the object detection model.
         Args:
@@ -178,11 +215,15 @@ class Detectron2TRT(ModelBase):
             return results
         confs = kwargs.get("confs", {})
         mask_threshold = kwargs.get("mask_threshold", 0.5)
-        process_masks = kwargs.get("process_masks", False)
+        process_masks = kwargs.get("process_masks", True)
+        operators = kwargs.get("operators", [])
         image_h, image_w = images[0].shape[0], images[0].shape[1]
         
-        
-        num_preds, boxes, scores, classes, masks = predictions[:5]
+        if len(predictions) == 5:
+            num_preds, boxes, scores, classes, masks = predictions[:5]
+        else:
+            num_preds, boxes, scores, classes = predictions[:4]
+            masks = None
 
         
         classes = self.class_map_func(classes)
@@ -207,25 +248,29 @@ class Detectron2TRT(ModelBase):
             processed_boxes.append(batch_boxes)
             processed_scores.append(batch_scores)
             processed_classes.append(batch_classes)
-            filtered_masks = masks[idx][valid_scores]
+            filtered_masks = masks[idx][valid_scores] if masks is not None else []
             batch_masks = []
-            if process_masks:
+            if process_masks and masks is not None:
                 batch_masks = rescale_masks(
                     torch.from_numpy(filtered_masks).to(self.device),
                     torch.from_numpy(batch_boxes).to(self.device),
                     (image_h, image_w,),
                     mask_threshold
                 )
+                if len(operators) > 0:
+                    batch_masks = np.array([
+                        revert_mask_to_origin(mask.cpu().numpy(), operators) for mask in batch_masks
+                    ])
                 if kwargs.get("return_segments", False):
                     if len(operators) > 0:
                         batch_segments = [
-                            revert_to_origin(mask_to_polygon(
-                                mask
-                                ), operators) for mask in batch_masks
+                            revert_to_origin(mask_to_polygon_cv2(
+                                mask.cpu().numpy()
+                            ), operators) for mask in batch_masks
                         ]
                     else:
                         batch_segments = [
-                            mask_to_polygon(mask) for mask in batch_masks
+                            mask_to_polygon_cv2(mask.cpu().numpy()) for mask in batch_masks
                         ]
                     
             else:
@@ -237,7 +282,7 @@ class Detectron2TRT(ModelBase):
             processed_segments.append(batch_segments)
             
         t1 = time.time()
-        self.logger.info(f"post-processing time {(t1-t0)* 1000.0} ms")     
+        proc_time = (t1-t0)
         results = {
             "boxes": processed_boxes,
             "scores": processed_scores,
@@ -246,17 +291,6 @@ class Detectron2TRT(ModelBase):
             "segments": processed_segments
         }
         return results
-    
-    def get_batches(self, images):
-        # get the number of batches add empty images to make it a multiple of batch size
-        num_batches = len(images) // self.batch_size
-        if len(images) % self.batch_size != 0:
-            num_batches += 1
-            for i in range(0, self.batch_size - len(images) % self.batch_size):
-                images.append(np.zeros_like(images[0]))
-        for i in range(0, num_batches):
-            yield images[i * self.batch_size : (i + 1) * self.batch_size]
-    
 
     def predict(self, images, **kwargs):
         """
@@ -272,23 +306,33 @@ class Detectron2TRT(ModelBase):
         Logs:
             The time taken for postprocessing in milliseconds.
         """
-        predictions = self.forward(self.preprocess(images))
         t0 = time.time()
+        
+        if isinstance(images, np.ndarray):
+            # if the input is a single image
+            shp = images.shape
+            if len(shp) == 3:
+                images = [images]
+            elif len(shp) == 4 and images.shape[0] != self.batch_size:
+                self.logger.error(f"Batch size mismatch: {images.shape[0]} != {self.batch_size}")
+                return {}
+        
+        predictions = self.forward(self.preprocess(images))
         predictions = self.postprocess(images, predictions,**kwargs)
         t1 = time.time()
-        self.logger.info(f"postprocessing time {(t1-t0)*1000.0:.2f} ms")
+        self.logger.info(f"proc-time {(t1-t0)*1000.0:.2f} ms")
         return predictions
     
-    def annotate_image(self, result, image, color_map=None):
+    def annotate_image(self, result, image, color_map=None, **kwargs):
         """
-        Annotates an image with bounding boxes, class labels, and masks.
+        Annotates an image with bounding boxes, class labels, scores, and masks.
 
         Args:
             result (dict): A dictionary containing detection results with keys:
-                - "classes" (list): List of class labels for detected objects.
-                - "boxes" (list): List of bounding boxes for detected objects.
-                - "scores" (list): List of confidence scores for detected objects.
-                - "masks" (list, optional): List of masks for detected objects.
+                - "classes" (list): List of detected class labels.
+                - "scores" (list): List of confidence scores for each detected class.
+                - "boxes" (list): List of bounding boxes for each detected object.
+                - "masks" (list, optional): List of masks for each detected object.
             image (numpy.ndarray): The image to annotate.
             color_map (dict, optional): A dictionary mapping class labels to colors.
 
@@ -305,14 +349,17 @@ class Detectron2TRT(ModelBase):
             )
         return image
 
-class Detectron2Torchscript(ModelBase):
-    logger = logging.getLogger(__name__)
+@Detectron2Model.register("pt")
+class Detectron2PT(ODBase):
+    
+    logger = logging.getLogger('Detectron2PT')
+    logger.setLevel(logging.INFO)
    
     def __init__(self, model_path, class_map, device='cuda', **kwargs):
         try:
             self.model = torch.jit.load(model_path)
         except Exception as e:
-            self.logger.exception(f"Failed to load model: {e}")
+            self.logger.exception(f"❗ Failed to load model: {e}")
         
         self.device = torch.device(device)
         # move the model to gpu
@@ -379,10 +426,10 @@ class Detectron2Torchscript(ModelBase):
             torch.Tensor: The model's predictions for the given inputs.
         """
         with torch.no_grad():
-            predictions = self.model(inputs)
+            predictions = self.model.forward(inputs)
         return predictions
     
-    def postprocess(self, images, predictions,operators=[], **kwargs):
+    def postprocess(self, images, predictions, **kwargs):
         """
         Post-processes the predictions from the model to filter and format the results.
         Args:
@@ -414,7 +461,9 @@ class Detectron2Torchscript(ModelBase):
             return results
         confs = kwargs.get("confs", {})
         mask_threshold = kwargs.get("mask_threshold", 0.5)
-        
+        process_masks = kwargs.get("process_masks", True)
+        operators = kwargs.get("operators", [])
+        self.logger.info(f"operators: {operators}")
         # if no predictions, return empty results
         if predictions[0]["pred_classes"].shape[0] == 0:
             return results
@@ -429,21 +478,28 @@ class Detectron2Torchscript(ModelBase):
             batch_scores = batch_scores[keep]
             batch_classes = batch_classes[keep]
             batch_boxes = output["pred_boxes"][keep]
-            if "pred_masks" in output:
+            if 'pred_masks' in output:
                 batch_masks = output["pred_masks"][keep]
-                batch_masks = rescale_masks(batch_masks.to(self.device).squeeze(1), batch_boxes.to(self.device), (image_h,image_w,), mask_threshold)
-                if kwargs.get("return_segments", False):
-                    if len(operators) > 0:
-                        batch_segments = [
-                            revert_to_origin(mask_to_polygon(
-                                mask
-                                ), operators) for mask in batch_masks
-                        ]
-                    else:
-                        batch_segments = [
-                            mask_to_polygon(mask) for mask in batch_masks
-                        ]
-            
+                if process_masks:
+                    batch_masks = rescale_masks(batch_masks.to(self.device).squeeze(1), batch_boxes.to(self.device), (image_h,image_w,), mask_threshold)
+                    
+                    if len(operators) > 0 and batch_masks.shape[0] > 0:
+                        batch_masks = np.array([
+                                revert_mask_to_origin(mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask ,operators) for mask in batch_masks
+                        ])
+                    if kwargs.get("return_segments", False) and batch_masks.shape[0] > 0:
+                        if len(operators) > 0:
+                            batch_segments = [
+                                revert_to_origin(mask_to_polygon_cv2(
+                                    mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask
+                                    ), operators) for mask in batch_masks
+                            ]
+                        else:
+                            batch_segments = [
+                                mask_to_polygon_cv2(mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask) for mask in batch_masks
+                            ]
+
+                        
             batch_boxes = revert_to_origin(batch_boxes, operators)
             results["boxes"].append(batch_boxes.cpu().numpy())
             results["scores"].append(batch_scores)
@@ -452,7 +508,7 @@ class Detectron2Torchscript(ModelBase):
             results["segments"].append(batch_segments)
         return results
     
-    def predict(self, images, operators=[],**kwargs):
+    def predict(self, images, **kwargs):
         """
         Perform prediction on the given images.
 
@@ -470,16 +526,25 @@ class Detectron2Torchscript(ModelBase):
         Raises:
             NotImplementedError: If operators is not None, indicating that the feature is not yet supported.
         """
+        t0 = time.time()
+        if isinstance(images, np.ndarray):
+            # if the input is a single image
+            shp = images.shape
+            if len(shp) == 3:
+                images = [images]
+            
         # preprocess
         inputs = self.preprocess(images)
         # forward
         predictions = self.forward(inputs)
         # postprocess
-        results = self.postprocess(images, predictions, operators=operators,**kwargs)
+        results = self.postprocess(images, predictions,**kwargs)
+        t1= time.time()
+        self.logger.info(f"proc-time {(t1-t0)*1000.0:.2f} ms")
         return results
         
     
-    def annotate_image(self, result, image, color_map=None):
+    def annotate_image(self, result, image, color_map=None, **kwargs):
         """
         Annotates an image with bounding boxes, class labels, scores, and masks.
 
@@ -504,50 +569,4 @@ class Detectron2Torchscript(ModelBase):
                 color=color_map,
             )
         return image
-
-
-if __name__ == "__main__":
-    import argparse
-    import glob
-    import os
-    import time
-    import json
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, default="/home/weights/model.engine")
-    parser.add_argument("--images_path", type=str, default="/home/input")
-    parser.add_argument("--class-map", type=str, help="Class map json file", default="/home/class_map.json")
-
-    
-    args = parser.parse_args()
-    with open(args.class_map, "r") as f:
-        class_map = json.load(f)
-    model = Detectron2TRT(args.model_path, class_map)
-    model.warmup()
-    
-    images = glob.glob(os.path.join(args.images_path, "*"))
-    image_batch = [
-        cv2.imread(image)
-        for image in images
-    ]
-    batches = model.get_batches(image_batch)
-    current_image_count = 0
-    for idx, batch in enumerate(batches):
-        batch_preds = model.predict(batch)
-        num_images = len(batch_preds["classes"])
-        batch_classes = batch_preds["classes"]
-        # remove empty images
-        for i in range(num_images):
-            if i + current_image_count >= len(images):
-                break
-            image_path = images[i + current_image_count]
-            image = cv2.imread(image_path)
-            batch_pred = {
-                "boxes": batch_preds["boxes"][i],
-                "scores": batch_preds["scores"][i],
-                "classes": batch_preds["classes"][i],
-            }
-            annotated_image = model.annotate_image(batch_pred, image)
-            file_ext = os.path.basename(image_path).split('.')[-1]
-            cv2.imwrite(f"/home/data/output/{os.path.basename(image_path)}_annotated.{file_ext}", annotated_image)
-        current_image_count += num_images

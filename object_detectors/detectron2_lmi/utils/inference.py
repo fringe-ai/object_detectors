@@ -6,9 +6,7 @@ from detectron2.modeling import build_model, detector_postprocess
 import torch
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.utils.visualizer import ColorMode, GenericMask
-from model_base import ModelBase
-from detectron2_lmi.utils.det_utils import merge_a_into_b
-import yaml
+from od_base import ODBase
 import logging
 import time
 import cv2
@@ -17,13 +15,12 @@ from gadget_utils.pipeline_utils import plot_one_box
 from label_utils.shapes import Rect, Mask, Keypoint
 from label_utils.csv_utils import write_to_csv
 import json
-from scipy.spatial import ConvexHull
 
 """
 TODO Update for deploying to LMI AISolutions
 """
 
-class Detectron2Model(ModelBase):
+class Detectron2Model(ODBase):
     logger = logging.getLogger(__name__)
     
     def __init__(self,weights_path: str, config_file: str, detectron2_config_file: str, class_map: dict):
@@ -69,8 +66,7 @@ class Detectron2Model(ModelBase):
         # 10 iterations of forward pass without gradient computation
 
         t0 = time.time()
-        for i in range(10):
-            self.forward(input)
+        self.forward(input)
         t1 = time.time()
         self.logger.info(f"Warmup time: {(t1-t0) * 1000} ms")
 
@@ -156,7 +152,7 @@ class Detectron2Model(ModelBase):
         
         return postprocessed_results
     
-    def predict(self, image, confs, **kwargs):
+    def predict(self, image,confs, operators=[], **kwargs):
         """
         The `predict` function preprocesses an image and then passes it through a neural network for forward
         propagation to make a prediction.
@@ -204,7 +200,7 @@ if __name__ == "__main__":
     import time
     parser = argparse.ArgumentParser()
     parser.add_argument("--weights", type=str, help="Path to the weights file", default="/home/weights/model_final.pth")
-    parser.add_argument("--config-file", type=str, help="Path to the config file", default="/home/config.yaml")
+    parser.add_argument("--config-file", type=str, help="Path to the config file", default="/home/weights/config.yaml")
     parser.add_argument("--detectron2-config", type=str, help="Detectron2 config file", default="COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
     parser.add_argument("--input-path", type=str, help="Path to the input folder", default="/home/input")
     parser.add_argument("--output-path", type=str, help="Path to the output folder", default="/home/output")

@@ -46,6 +46,17 @@ def register_datasets(dataset_dir: str, dataset_name: str):
 
 
 def create_config(cfg_file_path, detectron2_config_file, output_dir):
+    
+    version = 1
+    output_save_dir = os.path.join(output_dir, f"{date.today()}-v{version}")
+    # determine the version number based on the existing directories
+    while os.path.exists(output_save_dir):
+        version += 1
+        output_save_dir = os.path.join(output_dir, f"{date.today()}-v{version}")
+        # create the output directory if it does not exist
+
+    if not os.path.exists(output_save_dir):
+        os.makedirs(output_save_dir)
     # get the default config
     cfg = get_cfg()
 
@@ -55,29 +66,38 @@ def create_config(cfg_file_path, detectron2_config_file, output_dir):
         raise ValueError(f"Config file {cfg_file_path} does not exist")
 
     configuration = yaml.safe_load(open(cfg_file_path, "r"))
+    print(f"Configuration: {configuration}")
     # get the model configuration to use
     # load the config from the file
+    # remove augmentations from the config
+    
+    augmentations = configuration.get("AUGMENTATIONS", None)
+    hyperparameters_yaml_file  = cfg_file_path
+    if augmentations:
+        
+        augmentations_file = os.path.join(output_save_dir, "augmentations.yaml")
+        logger.info(f"Saving augmentations to {augmentations_file}")
+        with open(augmentations_file, "w") as f:
+            yaml.dump(augmentations, f)
+        
+        del configuration["AUGMENTATIONS"]
+        # save the config file
+        hyperparameters_yaml_file = os.path.join(os.path.dirname(cfg_file_path), 'hyp.yaml')
+        with open(hyperparameters_yaml_file, "w") as f:
+            yaml.dump(configuration, f)
+        
+
+
     cfg.merge_from_file(model_zoo.get_config_file(detectron2_config_file))
-    cfg.merge_from_file(cfg_file_path)
+    cfg.merge_from_file(hyperparameters_yaml_file)
 
     # set the model weights
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(detectron2_config_file)
 
-    version = 1
-    output_save_dir = os.path.join(output_dir, f"{date.today()}-v{version}")
-    # determine the version number based on the existing directories
-    while os.path.exists(output_save_dir):
-        version += 1
-        output_save_dir = os.path.join(output_dir, f"{date.today()}-v{version}")
     
     cfg.OUTPUT_DIR = output_save_dir
     logger.info(f"Output directory: {cfg.OUTPUT_DIR}")
 
-
-    # create the output directory if it does not exist
-
-    if not os.path.exists(cfg.OUTPUT_DIR):
-        os.makedirs(cfg.OUTPUT_DIR)
 
     # save the config to the output directory
     cfg_file = os.path.join(cfg.OUTPUT_DIR, "config.yaml")
