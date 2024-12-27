@@ -120,6 +120,15 @@ RUN pip install tensorboard
 RUN git clone -b ais https://github.com/lmitechnologies/LMI_AI_Solutions.git
 RUN pip install onnx-graphsurgeon onnxruntime
 RUN pip install numba
+
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/"
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/lmi_utils"
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/anomaly_detectors"
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/anomaly_detectors/submodules"
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/object_detectors"
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/object_detectors/submodules"
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/object_detectors/tf_objdet/models/research"
+ENV PYTHONPATH="${PYTHONPATH}:/home/LMI_AI_Solutions/classifiers"
 ```
 
 #### Train
@@ -180,7 +189,7 @@ services:
     ports:
       - 6006:6006 # tensorboard
     volumes:
-      - ./training/maskrcnn/2024-12-26-v3/:/home/weights   # weights
+      - ./training/maskrcnn/2024-12-26-v3/:/home/weights   # weights (where the pt file is saved)
     stdin_open: true # docker run -i
     tty: true        # docker run -t
     command: >
@@ -216,7 +225,7 @@ services:
       - ./configs/class_map.json:/home/class_map.json  # class map
     stdin_open: true # docker run -i
     tty: true        # docker run -t
-    command: 
+    command: >
       python3 -m detectron2_lmi.cli test -w /home/weights/model.pt
 ```
 ###### Outputs:
