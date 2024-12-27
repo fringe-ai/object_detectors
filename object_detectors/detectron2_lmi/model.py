@@ -261,7 +261,7 @@ class Detectron2TRT(ODBase):
                         revert_mask_to_origin(mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask, operators) for mask in batch_masks
                     ])
                 if kwargs.get("return_segments", False) and num_masks > 0:
-                    if len(operators) > 0 and num_masks > 0:
+                    if len(operators) > 0:
                         batch_segments = [
                             revert_to_origin(mask_to_polygon_cv2(
                                 mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask
