@@ -36,9 +36,13 @@ The following is an example configuration file for training a maskrcnn model
 
 ```yaml
 DATASETS:
-  TEST: [] # define the test dataset similar to the train dataset or leave it as empty list (use the name "test_dataset")
+  TEST: [] # define the test dataset similar to the train dataset or leave it as empty list.
   TRAIN:
-  - train # dataset name should make the folder name
+  - train # has the match name
+
+DATALOADER:
+  NUM_WORKERS: 4
+  FILTER_EMPTY_ANNOTATIONS: true
 
 MODEL:
   ROI_HEADS:
@@ -50,6 +54,7 @@ INPUT:
   MAX_SIZE_TRAIN: 512
   MIN_SIZE_TEST: 512
   MAX_SIZE_TEST: 512
+  FORMAT: RGB
 
 # Training parameters
 SOLVER:
@@ -61,12 +66,34 @@ SOLVER:
   GAMMA: 0.1
   IMS_PER_BATCH: 2 # Number of images per batch
   LR_SCHEDULER_NAME: WarmupMultiStepLR
-  MAX_ITER: 6000 # Maximum number of iterations default is 270000 for 3x schedule please change it accordingly
+  MAX_ITER: 3000 # Maximum number of iterations default is 270000 for 3x schedule please change it accordingly
 
 TEST:
   # Feel free to add more augmentations or change the min/max sizes for the images
   DETECTIONS_PER_IMAGE: 1000 # Number of detections per image
   EVAL_PERIOD: 0 # Runs evaluation every N iterations
+
+# Update the training augmentations here, if you would like to not use one of the augmentations one can comment the out. All of the augmentations are random
+AUGMENTATIONS:
+  BRIGHTNESS:
+    MIN: 0.9
+    MAX: 1.1
+  # LIGHTING:
+  #   SCALE: 0.1
+  # FLIP_HORIZONTAL:
+  #   PROB: 0.5
+  # FLIP_VERTICAL:
+  #   PROB: 0.5
+  # ROTATION:
+  #   MIN: 90
+  #   MAX: 90
+  # SATURATION:
+  #   MIN: 0.9
+  #   MAX: 1.1
+  # CONTRAST:
+  #   MIN: 0.9
+  #   MAX: 1.1
+
 ```
 
 #### Dockerfile
@@ -101,8 +128,8 @@ Example docker-compose.yaml file to start a training job
 ```yaml
 version: "3.9"
 services:
-  detectron2_lmi:
-    container_name: detectron2_lmi
+  detectron2_lmi_train:
+    container_name: detectron2_lmi_train
     build:
       context: .
       dockerfile: dockerfile
@@ -121,7 +148,7 @@ services:
       - ./data/coco/:/home/data  # training data please attach to the root folder
       - ./configs/maskrcnn.yaml:/home/config.yaml  # customized hyperparameters
     command: >
-      python3 /home/LMI_AI_Solutions/object_detectors/detectron2_lmi/trainer.py
+      python3 -m detectron2_lmi.cli train
 ```
 *The training process automatically starts tensorboard*
 
@@ -130,52 +157,14 @@ services:
 Served up at the following address [localhost:6006](http://localhost:6006)
 *6006 is the default port*
 
+### Convert to PT
 
-#### Inference
-
-To run inference please use the following docker-compose.yaml file:
-
-```yaml
-version: "3.9"
-services:
-  detectron2_lmi:
-    container_name: detectron2_lmi
-    build:
-      context: .
-      dockerfile: dockerfile
-    ipc: host
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    ports:
-      - 6006:6006 # tensorboard
-    volumes:
-      - ./training/maskrcnn/2024-09-22-v2/:/home/weights   # trained model weights
-      - ./data/coco/train/images/:/home/input  # folder of images
-      - ./prediction/maskrcnn/2024-09-22-v2-1/:/home/output  # annotated images output
-      - ./configs/maskrcnn.yaml:/home/config.yaml  # customized hyperparameters for test can be the same as train
-      - ./configs/class_map.json:/home/class_map.json  # class map file int:string
-    command: >
-      bash -c "source /home/LMI_AI_Solutions/lmi_ai.env && python3 /home/LMI_AI_Solutions/object_detectors/detectron2_lmi/inference.py --confidence-threshold 0.1"
-```
-###### Outputs:
-
-A LMI formated csv file with all predictions is automatically saved in the the the output folder defined in the docker compose file.
-
-### Convert to TensorRT
-
-To convert to tensorrt a `sample_image.png` is required to be in folder where the weights are stored. The image should be of size thats divizeable by 32. The imagesize should be defined in the config.yaml file shown above for training.
-
-*Default batch size is 1 although batchsize can be changed to any batchsize*
+Detectron2 outputs a `.pth` file. To convert it to a regular Pytorch `pt` file please convert it the following way:
 
 ```yaml
 services:
-  detectron2_lmi:
-    container_name: detectron2_lmi
+  detectron2_lmi_convert:
+    container_name: detectron2_lmi_convert
     build:
       context: .
       dockerfile: dockerfile
@@ -190,7 +179,76 @@ services:
     ports:
       - 6006:6006 # tensorboard
     volumes:
-      - ./training/maskrcnn/2024-09-22-v2/:/home/weights   # weights
+      - ./training/maskrcnn/2024-12-26-v3/:/home/weights   # weights
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
     command: >
-      bash -c "source /home/LMI_AI_Solutions/lmi_ai.env && python3 /home/LMI_AI_Solutions/object_detectors/detectron2_lmi/convert.py -b 1 --fp16"
+      python3 -m detectron2_lmi.cli convert --pt
+```
+
+#### Inference
+
+To run inference please use the following docker-compose.yaml file:
+
+```yaml
+version: "3.9"
+services:
+  detectron2_lmi_infer:
+    container_name: detectron2_lmi_infer
+    build:
+      context: .
+      dockerfile: dockerfile
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - 6006:6006 # tensorboard
+    volumes:
+      - ./training/maskrcnn/2024-12-26-v3/:/home/weights   # weights
+      - ./data/coco/train/images/:/home/input  # inference data
+      - ./prediction/maskrcnn/test/:/home/output  # inference output
+      - ./configs/class_map.json:/home/class_map.json  # class map
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    command: 
+      python3 -m detectron2_lmi.cli test -w /home/weights/model.pt
+```
+###### Outputs:
+
+A LMI formated csv file with all predictions is automatically saved in the the the output folder defined in the docker compose file.
+
+### Convert to TensorRT
+
+To convert to tensorrt a `sample_image.png` is required to be in folder where the weights are stored. The image should be of size thats divizeable by 32. The imagesize should be defined in the config.yaml file shown above for training.
+
+*Default batch size is 1 although batch size can be changed to any batch size using -b*
+
+```yaml
+services:
+  detectron2_lmi_trt:
+    container_name: detectron2_lmi_trt
+    build:
+      context: .
+      dockerfile: dockerfile
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - 6006:6006 # tensorboard
+    volumes:
+      - ./training/maskrcnn/2024-12-26-v3/:/home/weights   # weights
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    command: >
+      python3 -m detectron2_lmi.cli convert --trt --fp16
 ```
