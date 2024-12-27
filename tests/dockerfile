@@ -18,3 +18,9 @@ RUN anomalib install --option core
 # install git lfs 
 RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
 RUN apt-get install git-lfs
+
+RUN pip install --user 'git+https://github.com/facebookresearch/fvcore'
+RUN git clone https://github.com/facebookresearch/detectron2 detectron2
+RUN pip install --user -e detectron2 
+RUN pip install tensorboard
+RUN pip install numba

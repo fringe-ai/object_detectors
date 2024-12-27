@@ -60,6 +60,8 @@ def imgs_coco():
     resized_images = []
     ops = []
     for p in paths:
+        if 'png' not in p and 'jpg' not in p:
+            continue
         rgb = load_image(p)
         h,w = rgb.shape[:2]
         im2 = cv2.resize(rgb, (im_dim, im_dim))
@@ -76,6 +78,8 @@ def imgs_dota():
     resized_images = []
     ops = []
     for p in paths:
+        if 'png' not in p and 'jpg' not in p:
+            continue
         rgb = load_image(p)
         h,w = rgb.shape[:2]
         im2 = cv2.resize(rgb, (im_dim, im_dim))
