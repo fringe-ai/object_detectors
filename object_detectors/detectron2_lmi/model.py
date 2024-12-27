@@ -462,7 +462,6 @@ class Detectron2PT(ODBase):
         mask_threshold = kwargs.get("mask_threshold", 0.5)
         process_masks = kwargs.get("process_masks", True)
         operators = kwargs.get("operators", [])
-        self.logger.info(f"operators: {operators}")
         # if no predictions, return empty results
         if predictions[0]["pred_classes"].shape[0] == 0:
             return results

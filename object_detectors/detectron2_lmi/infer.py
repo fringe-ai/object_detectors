@@ -90,7 +90,7 @@ def inference_run(args):
             csv_results.append(
                 Rect(im_name=fname, category=outputs['classes'][idx], up_left=box[:2].astype(int).tolist(), bottom_right=box[2:].astype(int).tolist(), confidence=score, angle=0)
             )
-            if 'segments' in outputs:
+            if 'segments' in outputs and len(outputs['segments']) > 0:
                 segments = outputs['segments'][idx].astype(int)
                 csv_results.append(Mask(im_name=fname, category=outputs['classes'][idx], x_vals=segments[:,0].tolist(), y_vals=segments[:,1].tolist(), confidence=score))
         
