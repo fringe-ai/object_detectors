@@ -22,16 +22,6 @@ DET2_CONFIG_FILE = 'config.yaml'
 DET2_SAMPLE_IMAGE = '/home/sample_image.png'
 DET2_PTH_EXPORT = 'model_final.pth'
 
-# def process(args):
-#     if args['action'] == 'train':
-#         logger.info("Training model")
-#         training_run(args)
-#     elif args['action'] == 'test':
-#         inference_run(args)
-#     elif args["action"] == 'convert':
-#         convert(args)
-
-
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     subs = ap.add_subparsers(dest='action',required=True,help='Action modes: train, test or convert')
