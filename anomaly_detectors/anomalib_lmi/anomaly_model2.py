@@ -72,7 +72,7 @@ class AnomalyModel2(Anomalib_Base):
                         self.fp16 = True
                 else:
                     self.output_names.append(name)
-                im = self.from_numpy(np.empty(shape, dtype=dtype)).to(self.device)
+                im = self.from_numpy(np.empty(shape, dtype=dtype))
                 self.bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
             self.binding_addrs = OrderedDict((n, d.ptr) for n, d in self.bindings.items())
             self.model_shape=list(input_shape[-2:])
