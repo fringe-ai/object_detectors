@@ -97,17 +97,6 @@ def inference_run(args):
         results[fname] = csv_results
     write_to_csv(results, os.path.join(args.output, f"predictions.csv"), overwrite=True)
 
-# if __name__ == "__main__":
-#     import argparse
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("--model_path", type=str, default='/home/weights/model.pt', help="The path to the model")
-#     parser.add_argument('-i',"--imgs", type=str, default='/home/input', help="The path to the images")
-#     parser.add_argument('-o',"--output", type=str, default='/home/output', help="The path to the outputs")
-#     parser.add_argument("--class_map", type=str, default='/home/class_map.json', help="The path to the class map")
-#     parser.add_argument("--confidence", type=float, default=0.5, help="The confidence threshold")
-#     args = parser.parse_args()
-#     inference_run(args)
-    
     
     
     
