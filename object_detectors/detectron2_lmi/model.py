@@ -9,9 +9,7 @@ from postprocess_utils.mask_utils import rescale_masks,mask_to_polygon_cv2
 import cv2
 import logging
 import torch
-from detectron2.modeling.postprocessing import detector_postprocess
 import torchvision
-
 import time
 
 class Detectron2Model(ODBase):
