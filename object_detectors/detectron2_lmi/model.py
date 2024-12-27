@@ -255,12 +255,13 @@ class Detectron2TRT(ODBase):
                     (image_h, image_w,),
                     mask_threshold
                 )
-                if len(operators) > 0:
+                num_masks = len(batch_masks)
+                if len(operators) > 0 and num_masks > 0:
                     batch_masks = np.array([
                         revert_mask_to_origin(mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask, operators) for mask in batch_masks
                     ])
-                if kwargs.get("return_segments", False):
-                    if len(operators) > 0:
+                if kwargs.get("return_segments", False) and num_masks > 0:
+                    if len(operators) > 0 and num_masks > 0:
                         batch_segments = [
                             revert_to_origin(mask_to_polygon_cv2(
                                 mask.cpu().numpy() if isinstance(mask, torch.Tensor) else mask
@@ -476,9 +477,9 @@ class Detectron2PT(ODBase):
             batch_scores = batch_scores[keep]
             batch_classes = batch_classes[keep]
             batch_boxes = output["pred_boxes"][keep]
-            if 'pred_masks' in output and process_masks:
+            if 'pred_masks' in output:
                 batch_masks = output["pred_masks"][keep]
-                if process_masks:
+                if process_masks and len(batch_masks) > 0:
                     batch_masks = rescale_masks(batch_masks.to(self.device).squeeze(1), batch_boxes.to(self.device), (image_h,image_w,), mask_threshold)
                     
                     if len(operators) > 0:
