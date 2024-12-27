@@ -117,7 +117,6 @@ class TestDetectron2ModelPT:
         outputs['scores'] = outputs['scores'][0]
         outputs['masks'] = outputs['masks'][0]
         outputs['segments'] = outputs['segments'][0]
-        logger.debug(f"Boxes: {outputs['masks'].shape}")
         assert len(outputs['boxes']) == len(outputs['classes']) == len(outputs['scores']) == len(outputs['masks']) == len(outputs['segments'])
         assert outputs['masks'].shape[1] == 512
         assert outputs['masks'].shape[2] == 512
@@ -126,6 +125,21 @@ class TestDetectron2ModelPT:
            outputs, image, show_segments=True
         )
         cv2.imwrite(os.path.join(OUT_DIR, os.path.basename(SAMPLE_IMAGE)), annotated_image)
-        
+    
+    def test_operators_no_masks(self):
+        confs = {
+           v:1.0 for k,v in class_map.items()
+        }
+        model = Detectron2Model(MODEL_PATH, class_map)
+        image = cv2.imread(SAMPLE_IMAGE)
+        image = cv2.resize(image, (512, 512))
+        operators = [{'resize': [1024,1024,512,512]}]
+        outputs = model.predict(image, confs=confs, return_segments=True, process_masks=True, operators=operators)
+        outputs['boxes'] = outputs['boxes'][0]
+        outputs['classes'] = outputs['classes'][0]
+        outputs['scores'] = outputs['scores'][0]
+        outputs['masks'] = outputs['masks'][0]
+        outputs['segments'] = outputs['segments'][0]
+        assert len(outputs['boxes']) == len(outputs['classes']) == len(outputs['scores']) == len(outputs['masks']) == len(outputs['segments'])
         
         
