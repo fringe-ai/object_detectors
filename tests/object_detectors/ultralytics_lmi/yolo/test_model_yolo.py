@@ -14,6 +14,7 @@ sys.path.append(os.path.join(ROOT, 'object_detectors'))
 
 import gadget_utils.pipeline_utils as pipeline_utils
 from ultralytics_lmi.yolo.model import Yolo, YoloObb, YoloPose
+from object_detector import ObjectDetector
 
 
 logging.basicConfig()
@@ -74,11 +75,41 @@ def model_obb_dota():
         YoloObb(model) for model in OD_OBB_DOTA
     ]
 
-
 @pytest.fixture
 def model_pose():
     return [
         YoloPose(model) for model in OD_POSE_MODELS
+    ]
+    
+@pytest.fixture
+def model_det_api():
+    return [
+        ObjectDetector(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='od', framework='ultralytics', weights=model) for model in OD_DET_MODELS
+    ]
+
+@pytest.fixture
+def model_seg_api():
+    return [
+        ObjectDetector(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='seg', framework='ultralytics', weights=model) for model in OD_SEG_MODELS
+    ]
+
+@pytest.fixture
+def model_obb_dota8_api():
+    return [
+        ObjectDetector(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='obb', framework='ultralytics', weights=model) for model in OD_OBB_DOTA_8
+    ]
+    
+@pytest.fixture
+def model_obb_dota_api():
+    return [
+        ObjectDetector(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='obb', framework='ultralytics', weights=model) for model in OD_OBB_DOTA
+    ]
+
+
+@pytest.fixture
+def model_pose_api():
+    return [
+        ObjectDetector(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='pose', framework='ultralytics', weights=model) for model in OD_POSE_MODELS
     ]
 
 def load_image(path):
@@ -167,7 +198,33 @@ class Test_Yolo_Det:
                     im_out = cv2.cvtColor(im_out, cv2.COLOR_RGB2BGR)
                     cv2.imwrite(os.path.join(OUT_DIR, f'det-{i}.png'), im_out)
                 i += 1
-                
+
+class Test_Yolo_Det_API:
+    def test_warmup(self, model_det_api):
+        for model in model_det_api:
+            model.warmup()
+            
+    def test_predict(self, model_det_api, imgs_coco):
+        i = 0
+        for model in model_det_api:
+            for img,resized,op in zip(*imgs_coco):
+                out,time_info = model.predict(resized,configs=0.5,operators=op)
+                assert len(out['boxes'])>0
+                for sc in out['scores']:
+                    assert sc>=0.5
+                im_out = model.annotate_image(out, img)
+                    
+                if torch.cuda.is_available():
+                    resized = torch.from_numpy(resized).cuda()
+                    out,time_info = model.predict(resized,configs=0.5,operators=op)
+                    for b,sc in zip(out['boxes'], out['scores']):
+                        assert b.is_cuda and sc.is_cuda
+                    img = torch.from_numpy(img).cuda()
+                    im_out = model.annotate_image(out, img)
+                    os.makedirs(OUT_DIR, exist_ok=True)
+                    im_out = cv2.cvtColor(im_out, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(os.path.join(OUT_DIR, f'det-{i}.png'), im_out)
+                i += 1
                 
 class Test_Yolo_Seg:
     def test_warmup(self, model_seg):
@@ -196,6 +253,32 @@ class Test_Yolo_Seg:
                     cv2.imwrite(os.path.join(OUT_DIR, f'seg-{i}.png'), im_out)
                 i += 1
 
+class Test_Yolo_Seg_API:
+    def test_warmup(self, model_seg_api):
+        for model in model_seg_api:
+            model.warmup()
+            
+    def test_predict(self, model_seg_api, imgs_coco):
+        i = 0
+        for model in model_seg_api:
+            for img,resized,op in zip(*imgs_coco):
+                out,time_info = model.predict(resized,configs=0.5,operators=op)
+                assert len(out['masks'])>0 and len(out['segments'])>0
+                for sc in out['scores']:
+                    assert sc>=0.5
+                im_out = model.annotate_image(out, img)
+                    
+                if torch.cuda.is_available():
+                    resized = torch.from_numpy(resized).cuda()
+                    out,time_info = model.predict(resized,configs=0.5,operators=op)
+                    for seg,m,b,sc in zip(out['segments'], out['masks'], out['boxes'], out['scores']):
+                        assert seg.is_cuda and m.is_cuda and b.is_cuda and sc.is_cuda
+                    img = torch.from_numpy(img).cuda()
+                    im_out = model.annotate_image(out, img)
+                    im_out = cv2.cvtColor(im_out, cv2.COLOR_RGB2BGR)
+                    os.makedirs(OUT_DIR, exist_ok=True)
+                    cv2.imwrite(os.path.join(OUT_DIR, f'seg-{i}.png'), im_out)
+                i += 1
 
 class Test_Yolo_Obb:
     def test_warmup_dota8(self, model_obb_dota8):
@@ -249,7 +332,59 @@ class Test_Yolo_Obb:
                     os.makedirs(OUT_DIR, exist_ok=True)
                     cv2.imwrite(os.path.join(OUT_DIR, f'obb-{i}.png'), im_out)
                 i += 1
+
+class Test_Yolo_Obb_API:
+    def test_warmup_dota8(self, model_obb_dota8_api):
+        for model in model_obb_dota8_api:
+            model.warmup()
             
+    def test_warmup_dota(self, model_obb_dota_api):
+        for model in model_obb_dota_api:
+            model.warmup()
+        
+    def test_predict_dota8(self, model_obb_dota8_api, imgs_dota8):
+        i = 0
+        for model in model_obb_dota8_api:
+            for img,resized,op in zip(*imgs_dota8):
+                out,time_info = model.predict(resized,configs=0.5,operators=op) 
+                assert len(out['boxes'])>0
+                for sc in out['scores']:
+                    assert sc>=0.5
+                im_out = model.annotate_image(out, img)
+                    
+                if torch.cuda.is_available():
+                    resized = torch.from_numpy(resized).cuda()
+                    out,time_info = model.predict(resized,configs=0.5,operators=op)
+                    for b,sc in zip(out['boxes'], out['scores']):
+                        assert b.is_cuda and sc.is_cuda
+                    img = torch.from_numpy(img).cuda()
+                    im_out = model.annotate_image(out, img)
+                    im_out = cv2.cvtColor(im_out, cv2.COLOR_RGB2BGR)
+                    os.makedirs(OUT_DIR, exist_ok=True)
+                    cv2.imwrite(os.path.join(OUT_DIR, f'obb-{i}.png'), im_out)
+                i += 1
+    
+    def test_predict_dota(self, model_obb_dota_api, imgs_dota):
+        i = 0
+        for model in model_obb_dota_api:
+            for img,resized,op in zip(*imgs_dota):
+                out,time_info = model.predict(resized,configs=0.5,operators=op)
+                assert len(out['boxes'])>0
+                for sc in out['scores']:
+                    assert sc>=0.5
+                im_out = model.annotate_image(out, img)
+                    
+                if torch.cuda.is_available():
+                    resized = torch.from_numpy(resized).cuda()
+                    out,time_info = model.predict(resized,configs=0.5,operators=op)
+                    for b,sc in zip(out['boxes'], out['scores']):
+                        assert b.is_cuda and sc.is_cuda
+                    img = torch.from_numpy(img).cuda()
+                    im_out = model.annotate_image(out, img)
+                    im_out = cv2.cvtColor(im_out, cv2.COLOR_RGB2BGR)
+                    os.makedirs(OUT_DIR, exist_ok=True)
+                    cv2.imwrite(os.path.join(OUT_DIR, f'obb-{i}.png'), im_out)
+                i += 1  
 
 class Test_Yolo_Pose:
     def test_warmup(self, model_pose):
@@ -259,6 +394,34 @@ class Test_Yolo_Pose:
     def test_predict(self, model_pose, imgs_coco):
         i = 0
         for model in model_pose:
+            for img,resized,op in zip(*imgs_coco):
+                out,time_info = model.predict(resized,configs=0.5,operators=op)
+                assert len(out['boxes'])>0
+                for sc in out['scores']:
+                    assert sc>=0.5
+                im_out = model.annotate_image(out, img)
+                    
+                if torch.cuda.is_available():
+                    resized = torch.from_numpy(resized).cuda()
+                    out,time_info = model.predict(resized,configs=0.5,operators=op)
+                    for b,sc,kp in zip(out['boxes'], out['scores'], out['points']):
+                        assert b.is_cuda and sc.is_cuda and kp.is_cuda
+                    img = torch.from_numpy(img).cuda()
+                    im_out = model.annotate_image(out, img)
+                    im_out = cv2.cvtColor(im_out, cv2.COLOR_RGB2BGR)
+                    os.makedirs(OUT_DIR, exist_ok=True)
+                    cv2.imwrite(os.path.join(OUT_DIR, f'pose-{i}.png'), im_out)
+                i += 1
+                
+
+class Test_Yolo_Pose_API:
+    def test_warmup(self, model_pose_api):
+        for model in model_pose_api:
+            model.warmup()
+        
+    def test_predict(self, model_pose_api, imgs_coco):
+        i = 0
+        for model in model_pose_api:
             for img,resized,op in zip(*imgs_coco):
                 out,time_info = model.predict(resized,configs=0.5,operators=op)
                 assert len(out['boxes'])>0
