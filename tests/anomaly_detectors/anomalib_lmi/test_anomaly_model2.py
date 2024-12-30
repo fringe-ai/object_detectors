@@ -35,14 +35,16 @@ OUTPUT_PATH = 'tests/assets/validation/ad_v1'
 
 
 @pytest.fixture
-def test_imgs():
+def test_data():
     paths = glob.glob(os.path.join(DATA_PATH, '*.png'))
     out = []
+    names = []
     for p in paths:
         im = cv2.imread(p)
         rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
         out.append(rgb)
-    return out
+        names.append(os.path.basename(p))
+    return out,names
 
 
 def test_compare_results_with_anomalib():
@@ -93,7 +95,7 @@ def test_model():
     
     
     
-def test_annotate(test_imgs):
+def test_annotate(test_data):
     def old_func(img, ad_scores, ad_threshold, ad_max):
         # Resize AD score to match input image
         h_img,w_img=img.shape[:2]
@@ -120,7 +122,11 @@ def test_annotate(test_imgs):
     for _ in range(10):
         ad.warmup()
     
-    for im in test_imgs:
+    out_path = os.path.join(OUTPUT_PATH,'annotate')
+    os.makedirs(out_path,exist_ok=1)
+    
+    imgs,names = test_data
+    for im,name in zip(imgs,names):
         pred = ad.predict(im)
         mean,max = pred.mean(),pred.max()
         
@@ -129,6 +135,8 @@ def test_annotate(test_imgs):
         t1 = time.time() - t0
         
         out2 = ad.annotate(im,pred,mean,max)
+        bgr = cv2.cvtColor(out2,cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(out_path,name),bgr)
         
         if torch.cuda.is_available():
             im = torch.from_numpy(im).cuda()
@@ -137,7 +145,7 @@ def test_annotate(test_imgs):
             t0 = time.time()
             out3 = ad.annotate(im,pred,mean,max)
             t2 = time.time() - t0
-            logger.info(f't2: {t2:.4f}, t1: {t1:.4f}')
+            logger.info(f'improved proc time from {t1:.4f} to {t2:.4f}')
             
             assert np.array_equal(out1,out2)
             assert np.array_equal(out2,out3)
