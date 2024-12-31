@@ -1,7 +1,6 @@
-from od_base import ODBase
 import json
 
-class ObjectDetector(ODBase):
+class AnomalyDetector:
     _registry = {}
 
     @classmethod
@@ -11,7 +10,7 @@ class ObjectDetector(ODBase):
         """
         frameworks = metadata.get('frameworks', None)
         model_names = metadata.get('model_names', None)
-        tasks = metadata.get('tasks', None)
+        tasks = metadata.get('tasks', ['seg'])
         versions = metadata.get('versions', None)
         info = metadata.get('info', None)
         
@@ -27,14 +26,13 @@ class ObjectDetector(ODBase):
                         cls._registry[key] = wrapper_cls
             return wrapper_cls
         return decorator
-    
     def __new__(cls, metadata,*args, **kwargs):
         """
         Override __new__ to return the appropriate wrapper instance based on version, model_name, and task.
         """
         framework = metadata.get('framework', None)
         model_name = metadata.get('model_name', None)
-        task = metadata.get('task', None)
+        task = metadata.get('task', 'seg')
         version = metadata.get('version', None)
         info = metadata.get('info', None)
         if not all([framework, model_name, task, version]):
@@ -44,4 +42,3 @@ class ObjectDetector(ODBase):
             raise ValueError(f"No class found for version={version}, model_name='{model_name}', task='{task}', framework='{framework}', metadata='{json.dumps(info)}'.")
         wrapper_cls = cls._registry[key]
         return wrapper_cls(*args, **kwargs)
-

@@ -1,5 +1,33 @@
 services:
-  ais_test:
+  test_ais_lmi_utils:
+    build:
+      context: .
+      dockerfile: ./dockerfile
+    volumes:
+      - ../:/app/repo
+    runtime: nvidia # ensure that Nvidia Container Toolkit is installed
+    ipc: host
+    command: >
+      bash -c "cd /app/repo && pytest tests/lmi_utils/"
+  
+  test_ais_object_detectors:
+    depends_on:
+      test_ais_lmi_utils:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: ./dockerfile
+    volumes:
+      - ../:/app/repo
+    runtime: nvidia # ensure that Nvidia Container Toolkit is installed
+    ipc: host
+    command: >
+      bash -c "cd /app/repo && pytest tests/object_detectors/"
+  
+  test_ais_anomaly_detectors_all_v1:
+    depends_on:
+      test_ais_object_detectors:
+        condition: service_completed_successfully
     build:
       context: .
       dockerfile: ./dockerfile
@@ -10,16 +38,16 @@ services:
     command: >
       bash -c "cd /app/repo && pytest --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model.py"
 
-  ais_test_old_ad:
+  test_ais_anomaly_detectors_all_v0:
+    depends_on:
+      test_ais_anomaly_detectors_all_v1:
+        condition: service_completed_successfully
     build:
       context: .
       dockerfile: ./dockerfile.v0
-    depends_on:
-      ais_test:
-        condition: service_completed_successfully
     volumes:
       - ../:/app/repo
-    runtime: nvidia
+    runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     ipc: host
     command: >
-      bash -c "cd /app/repo && pytest tests/anomaly_detectors/anomalib_lmi/test_anomaly_model.py"
+      bash -c "cd /app/repo && pytest --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model2.py"
