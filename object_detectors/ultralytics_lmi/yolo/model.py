@@ -38,7 +38,7 @@ def to_numpy(data):
         raise TypeError(f'Data type {type(data)} not supported')
 
 
-@ObjectDetector.register(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['od', 'seg'], frameworks=['ultralytics'])
+@ObjectDetector.register(metadata=dict(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['od', 'seg'], frameworks=['ultralytics']))
 class Yolo(ODBase):
     
     logger = logging.getLogger(__name__)
@@ -388,7 +388,7 @@ class Yolo(ODBase):
         return image
 
 
-@ObjectDetector.register(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['obb'], frameworks=['ultralytics'])
+@ObjectDetector.register(metadata=dict(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['obb'], frameworks=['ultralytics']))
 class YoloObb(Yolo):
     def __init__(self, weights:str, device='gpu', data=None, fp16=False) -> None:
         super().__init__(weights, device, data, fp16)
@@ -530,7 +530,7 @@ class YoloObb(Yolo):
         time_info['postproc'] = time.time()-t0
         return results_dict, time_info
 
-@ObjectDetector.register(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['pose'], frameworks=['ultralytics'])
+@ObjectDetector.register(metadata=dict(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['pose'], frameworks=['ultralytics']))
 class YoloPose(Yolo):
     def __init__(self, weights:str, device='gpu', data=None, fp16=False) -> None:
         super().__init__(weights, device, data, fp16)

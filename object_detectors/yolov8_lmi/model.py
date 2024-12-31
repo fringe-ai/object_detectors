@@ -38,7 +38,7 @@ def to_numpy(data):
         raise TypeError(f'Data type {type(data)} not supported')
 
 
-@ObjectDetector.register(versions=['v0'], model_names=['yolov8'], tasks=['od', 'seg'], frameworks=['ultralytics'])
+@ObjectDetector.register(metadata=dict(versions=['v0'], model_names=['yolov8'], tasks=['od', 'seg'], frameworks=['ultralytics']))
 class Yolov8(ODBase):
     
     logger = logging.getLogger(__name__)
@@ -388,7 +388,7 @@ class Yolov8(ODBase):
         return image
 
 
-@ObjectDetector.register(versions=['v0'], model_names=['yolov8'], tasks=['obb'], frameworks=['ultralytics'])
+@ObjectDetector.register(metadata=dict(versions=['v0'], model_names=['yolov8'], tasks=['obb'], frameworks=['ultralytics']))
 class Yolov8Obb(Yolov8):
     def __init__(self, weights:str, device='gpu', data=None, fp16=False) -> None:
         super().__init__(weights, device, data, fp16)
@@ -532,7 +532,7 @@ class Yolov8Obb(Yolov8):
     
 
 
-@ObjectDetector.register(versions=['v0'], model_names=['yolov8'], tasks=['pose'], frameworks=['ultralytics'])
+@ObjectDetector.register(metadata=dict(versions=['v0'], model_names=['yolov8'], tasks=['pose'], frameworks=['ultralytics']))
 class Yolov8Pose(Yolov8):
     def __init__(self, weights:str, device='gpu', data=None, fp16=False) -> None:
         super().__init__(weights, device, data, fp16)

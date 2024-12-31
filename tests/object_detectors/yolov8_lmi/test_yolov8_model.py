@@ -50,19 +50,19 @@ def model_pose():
 
 @pytest.fixture
 def model_det_api():
-    return ObjectDetector(version='v0', model_name='yolov8', task='od', framework='ultralytics', weights=MODEL_DET)
+    return ObjectDetector(metadata=dict(version='v0', model_name='yolov8', task='od', framework='ultralytics'), weights=MODEL_DET)
 
 @pytest.fixture
 def model_seg_api():
-    return ObjectDetector(version='v0', model_name='yolov8', task='seg', framework='ultralytics', weights=MODEL_SEG)
+    return ObjectDetector(metadata=dict(version='v0', model_name='yolov8', task='seg', framework='ultralytics'), weights=MODEL_SEG)
 
 @pytest.fixture
 def model_obb_api():
-    return ObjectDetector(version='v0', model_name='yolov8', task='obb', framework='ultralytics', weights=MODEL_OBB)
+    return ObjectDetector(metadata=dict(version='v0', model_name='yolov8', task='obb', framework='ultralytics'), weights=MODEL_OBB)
 
 @pytest.fixture
 def model_pose_api():
-    return ObjectDetector(version='v0', model_name='yolov8', task='pose', framework='ultralytics', weights=MODEL_POSE)
+    return ObjectDetector(metadata=dict(version='v0', model_name='yolov8', task='pose', framework='ultralytics'), weights=MODEL_POSE)
 
 def load_image(path):
     im = cv2.imread(path)
