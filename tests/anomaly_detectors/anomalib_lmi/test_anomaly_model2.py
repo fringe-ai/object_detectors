@@ -19,7 +19,8 @@ sys.path.append(os.path.join(ROOT, 'lmi_utils'))
 sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
-from anomalib_lmi.anomaly_model2 import AnomalyModel2
+# from anomalib_lmi.anomaly_model2 import AnomalyModel2
+from anomalib_lmi.anomaly_model import AnomalyModel
 
 
 logging.basicConfig()
@@ -38,7 +39,7 @@ def test_compare_results_with_anomalib():
     compare prediction results between current implementation and anomalib
     """
     model1 = TorchInferencer(MODEL_PATH)
-    model2 = AnomalyModel2(MODEL_PATH)
+    model2 = AnomalyModel(MODEL_PATH, version='v1')
     paths = glob.glob(os.path.join(DATA_PATH, '*.png'))
     for p in paths:
         # using anomalib code
@@ -63,20 +64,20 @@ def test_compare_results_with_anomalib():
         
         
 def test_warmup():
-    ad = AnomalyModel2(MODEL_PATH,224,112)
+    ad = AnomalyModel(MODEL_PATH,224,112, version='v1')
     ad.warmup()
     ad.warmup([672,640])
     
-    ad = AnomalyModel2(MODEL_PATH)
+    ad = AnomalyModel(MODEL_PATH, version='v1')
     ad.warmup()
     ad.warmup([256,224])
     
     
 def test_model():
-    ad = AnomalyModel2(MODEL_PATH,224,224,'resize')
+    ad = AnomalyModel(MODEL_PATH,224,224,'resize', version='v1')
     ad.test(DATA_PATH, OUTPUT_PATH)
     
-    ad = AnomalyModel2(MODEL_PATH)
+    ad = AnomalyModel(MODEL_PATH, version='v1')
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     
@@ -86,7 +87,7 @@ def test_cmds():
     with tempfile.TemporaryDirectory() as t:
         my_env = os.environ.copy()
         my_env['PYTHONPATH'] = f'$PYTHONPATH:{ROOT}/lmi_utils:{ROOT}/anomaly_detectors'
-        cmd = f'python -m anomalib_lmi.anomaly_model2 test -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --tile 224 224 --stride 224 224 --resize'
+        cmd = f'python -m anomalib_lmi.anomaly_model test -i {MODEL_PATH} -d {DATA_PATH} -o {str(t)} -g -p --tile 224 224 --stride 224 224 --resize'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
@@ -97,7 +98,7 @@ def test_cmds():
         assert len(l1) == len(l2)
         
         t2 = os.path.join(t,'recon')
-        cmd = f'python -m anomalib_lmi.anomaly_model2 convert -i {MODEL_PATH} -o {t2} --hw 1120 1120 --tile 224 224 --stride 224 224'
+        cmd = f'python -m anomalib_lmi.anomaly_model convert -i {MODEL_PATH} -o {t2} --hw 1120 1120 --tile 224 224 --stride 224 224'
         logger.info(f'running cmd: {cmd}')
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
