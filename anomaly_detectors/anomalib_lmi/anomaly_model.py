@@ -8,6 +8,7 @@ import albumentations as A
 
 from .base import Anomalib_Base
 import gadget_utils.pipeline_utils as pipeline_utils
+from anomaly_detector import AnomalyDetector
 
 
 logging.basicConfig()
@@ -17,7 +18,7 @@ FAIL = 'FAIL'
 MINIMUM_QUANT=1e-12
 
 Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
-
+@AnomalyDetector.register(metadata=dict(frameworks=['anomalib'], model_names=['patchcore', 'padim'], tasks=['seg'], versions=['v0']))
 class AnomalyModel(Anomalib_Base):
     '''
     Desc: Class used for AD model inference.  
@@ -26,7 +27,7 @@ class AnomalyModel(Anomalib_Base):
         - model_path: path to .pt file or TRT engine
     
     '''
-    logger = logging.getLogger('AnomalyModel v1')
+    logger = logging.getLogger('AnomalyModel v0')
     logger.setLevel(logging.INFO)
     
     def __init__(self, model_path):

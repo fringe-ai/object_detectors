@@ -20,6 +20,7 @@ sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
 from anomalib_lmi.anomaly_model2 import AnomalyModel2
+from anomaly_detector import AnomalyDetector
 
 
 logging.basicConfig()
@@ -60,6 +61,34 @@ def test_compare_results_with_anomalib():
         pred2 = model2.predict(rgb)
         
         assert np.array_equal(pred, pred2)
+
+def test_compare_results_with_anomalib_api():
+    """
+    compare prediction results between current implementation and anomalib
+    """
+    model1 = TorchInferencer(MODEL_PATH)
+    model2 = AnomalyDetector(dict(framework='anomalib', model_name='padim', task='seg', version='v1'), MODEL_PATH)
+    paths = glob.glob(os.path.join(DATA_PATH, '*.png'))
+    for p in paths:
+        # using anomalib code
+        tensor = read_image(p,as_tensor=True)
+        pred = model1.forward(model1.pre_process(tensor))
+        if isinstance(pred, dict):
+            pred = pred['anomaly_map']
+        elif isinstance(pred, Sequence):
+            pred = pred[1]
+        elif isinstance(pred, torch.Tensor):
+            pass
+        else:
+            raise Exception(f'Not supported output: {type(pred)}')
+        pred = pred.cpu().numpy().squeeze()
+        
+        # using AIS code
+        im = cv2.imread(p)
+        rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+        pred2 = model2.predict(rgb)
+        
+        assert np.array_equal(pred, pred2)
         
         
 def test_warmup():
@@ -70,13 +99,29 @@ def test_warmup():
     ad = AnomalyModel2(MODEL_PATH)
     ad.warmup()
     ad.warmup([256,224])
+
+def test_warmup_api():
+    ad = AnomalyDetector(dict(framework='anomalib', model_name='padim', task='seg', version='v1'), MODEL_PATH,224,112)
+    ad.warmup()
+    ad.warmup([672,640])
     
+    ad = AnomalyDetector(dict(framework='anomalib', model_name='padim', task='seg', version='v1'), MODEL_PATH,224,112)
+    ad.warmup()
+    ad.warmup([256,224])
     
+
 def test_model():
     ad = AnomalyModel2(MODEL_PATH,224,224,'resize')
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     ad = AnomalyModel2(MODEL_PATH)
+    ad.test(DATA_PATH, OUTPUT_PATH)
+    
+def test_model_api():
+    ad = AnomalyDetector(dict(framework='anomalib', model_name='padim', version='v1'), MODEL_PATH,224,224,'resize')
+    ad.test(DATA_PATH, OUTPUT_PATH)
+    
+    ad = AnomalyDetector(dict(framework='anomalib', model_name='padim', version='v1'), MODEL_PATH)
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     

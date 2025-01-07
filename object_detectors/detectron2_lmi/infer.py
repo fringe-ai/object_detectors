@@ -52,7 +52,7 @@ def inference_run(args):
     }
     
     # load model
-    model = Detectron2Model(model_path, class_map)
+    model = Detectron2Model(model_path, class_map=class_map)
     
     # model warmup
     model.warmup()

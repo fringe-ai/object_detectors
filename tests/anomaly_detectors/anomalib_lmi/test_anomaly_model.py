@@ -12,6 +12,7 @@ sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
 from anomalib_lmi.anomaly_model import AnomalyModel
+from anomaly_detector import AnomalyDetector
 
 
 logging.basicConfig()
@@ -28,7 +29,10 @@ OUTPUT_PATH = 'tests/assets/validation/ad_v0'
 def test_model():
     ad = AnomalyModel(MODEL_PATH)
     ad.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
-        
+
+def test_model_api():
+    ad = AnomalyDetector(dict(framework='anomalib', model_name='patchcore', task='seg', version='v0'), MODEL_PATH)
+    ad.test(DATA_PATH, OUTPUT_PATH, generate_stats=True,annotate_inputs=True)
         
 def test_cmds():
     with tempfile.TemporaryDirectory() as t:
@@ -45,4 +49,3 @@ def test_cmds():
         result = subprocess.run(cmd,shell=True,env=my_env,capture_output=True,text=True)
         logger.info(result.stdout)
         logger.info(result.stderr)
-    
