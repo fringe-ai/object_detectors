@@ -47,13 +47,13 @@ class Detectron2Model(ODBase):
             return wrapper_cls
         return decorator
     
-    def __new__(cls, model_path, class_map, *args,**kwargs):
+    def __new__(cls, model_path, *args,**kwargs):
         ext = model_path.split(".")[-1]
         wrapper_cls = cls._registry.get(ext)
         if wrapper_cls is None:
             raise ValueError("Invalid model file extension")
         
-        return wrapper_cls(model_path, class_map, *args, **kwargs)
+        return wrapper_cls(model_path, *args, **kwargs)
     
 
 @Detectron2Model.register("engine")
@@ -62,7 +62,7 @@ class Detectron2TRT(ODBase):
     logger = logging.getLogger('Detectron2TRT')
     logger.setLevel(logging.INFO)
     
-    def __init__(self, model_path, class_map, device='cuda', **kwargs):
+    def __init__(self, model_path, **kwargs):
         """
         Initialize the Detectron2 model with TensorRT engine.
         Args:
@@ -90,6 +90,7 @@ class Detectron2TRT(ODBase):
         self.model_inputs = []
         self.model_outputs = []
         self.allocations = []
+        device = kwargs.get("device", "cuda")
         self.device = torch.device(device)
         for i in range(self.engine.num_io_tensors):
             name = self.engine.get_tensor_name(i)
@@ -120,7 +121,9 @@ class Detectron2TRT(ODBase):
         
         self.input_shape = self.model_inputs[0]["shape"]
         self.input_dtype = self.model_inputs[0]["dtype"]
-
+        class_map = kwargs.get("class_map", None)
+        if class_map is None:
+            raise ValueError("class_map is required for [Detectron2TRT]")
         self.class_map = {
             int(k): str(v) for k, v in class_map.items()
         }
@@ -356,16 +359,18 @@ class Detectron2PT(ODBase):
     logger = logging.getLogger('Detectron2PT')
     logger.setLevel(logging.INFO)
    
-    def __init__(self, model_path, class_map, device='cuda', **kwargs):
+    def __init__(self, model_path,**kwargs):
         try:
             self.model = torch.jit.load(model_path)
         except Exception as e:
             self.logger.exception(f"❗ Failed to load model: {e}")
-        
+        device = kwargs.get("device", "cuda")
         self.device = torch.device(device)
         # move the model to gpu
         self.model.to(self.device)
-        
+        class_map = kwargs.get("class_map", None)
+        if class_map is None:
+            raise ValueError("class_map is required for [Detectron2PT]")
         self.class_map = {
             int(k): str(v) for k, v in class_map.items()
         }

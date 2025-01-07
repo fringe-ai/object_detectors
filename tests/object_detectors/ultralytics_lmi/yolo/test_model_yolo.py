@@ -84,32 +84,32 @@ def model_pose():
 @pytest.fixture
 def model_det_api():
     return [
-        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='od', framework='ultralytics'), weights=model) for model in OD_DET_MODELS
+        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='od', framework='ultralytics'), model_path=model) for model in OD_DET_MODELS
     ]
 
 @pytest.fixture
 def model_seg_api():
     return [
-        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='seg', framework='ultralytics'), weights=model) for model in OD_SEG_MODELS
+        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='seg', framework='ultralytics'), model_path=model) for model in OD_SEG_MODELS
     ]
 
 @pytest.fixture
 def model_obb_dota8_api():
     return [
-        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='obb', framework='ultralytics'), weights=model) for model in OD_OBB_DOTA_8
+        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='obb', framework='ultralytics'), model_path=model) for model in OD_OBB_DOTA_8
     ]
     
 @pytest.fixture
 def model_obb_dota_api():
     return [
-        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='obb', framework='ultralytics'), weights=model) for model in OD_OBB_DOTA
+        ObjectDetector(metadata=dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='obb', framework='ultralytics'), model_path=model) for model in OD_OBB_DOTA
     ]
 
 
 @pytest.fixture
 def model_pose_api():
     return [
-        ObjectDetector(dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='pose', framework='ultralytics'), weights=model) for model in OD_POSE_MODELS
+        ObjectDetector(dict(version='v1', model_name='yolov8' if 'yolov8n' in model else 'yolov11', task='pose', framework='ultralytics'), model_path=model) for model in OD_POSE_MODELS
     ]
 
 def load_image(path):

@@ -55,7 +55,7 @@ class TestDetectron2ModelPT:
         confs = {
            v:0.00 for k,v in class_map.items()
         }
-        model = Detectron2Model(MODEL_PATH, class_map)
+        model = Detectron2Model(MODEL_PATH, class_map=class_map)
         image = cv2.imread(SAMPLE_IMAGE)
         preds = model.predict(image, confs=confs, process_masks=False)
         assert orginal_preds.pred_boxes.tensor.shape == preds.get('boxes')[0].shape
@@ -71,7 +71,7 @@ class TestDetectron2ModelPT:
         confs = {
            v:0.95 for k,v in class_map.items()
         }
-        model = Detectron2Model(MODEL_PATH, class_map)
+        model = Detectron2Model(MODEL_PATH, class_map=class_map)
         image = cv2.imread(SAMPLE_IMAGE)
         outputs = model.predict(image, confs=confs, return_segments=True, process_masks=True)
         outputs['boxes'] = outputs['boxes'][0]
@@ -91,7 +91,7 @@ class TestDetectron2ModelPT:
         confs = {
            v:0.95 for k,v in class_map.items()
         }
-        model = Detectron2Model(MODEL_PATH, class_map)
+        model = Detectron2Model(MODEL_PATH, class_map=class_map)
         image = cv2.imread(SAMPLE_IMAGE)
         image = cv2.resize(image, (512, 512))
         operators = [{'resize': [1024,1024,512,512]}]
@@ -114,7 +114,7 @@ class TestDetectron2ModelPT:
         confs = {
            v:1.0 for k,v in class_map.items()
         }
-        model = Detectron2Model(MODEL_PATH, class_map)
+        model = Detectron2Model(MODEL_PATH, class_map=class_map)
         image = cv2.imread(SAMPLE_IMAGE)
         image = cv2.resize(image, (512, 512))
         operators = [{'resize': [1024,1024,512,512]}]

@@ -43,18 +43,18 @@ class Yolo(ODBase):
     
     logger = logging.getLogger(__name__)
     
-    def __init__(self, weights:str, device='gpu', data=None, fp16=False) -> None:
+    def __init__(self, model_path:str, device='gpu', data=None, fp16=False,**kwargs) -> None:
         """init the model
         Args:
-            weights (str): the path to the weights file.
+            model_path (str): the path to the model_path file.
             device (str, optional): GPU or CPU device. Defaults to 'gpu'.
             data (str, optional): the path to dataset yaml file. Defaults to None.
             fp16 (bool, optional): Whether to use fp16. Defaults to False.
         Raises:
             FileNotFoundError: _description_
         """
-        if not os.path.isfile(weights):
-            raise FileNotFoundError(f'File not found: {weights}')
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(f'File not found: {model_path}')
         
         # set device
         self.device = torch.device('cpu')
@@ -65,7 +65,7 @@ class Yolo(ODBase):
                 self.logger.warning('GPU not available, using CPU')
         
         # load model
-        self.model = AutoBackend(weights, self.device, data=data, fp16=fp16)
+        self.model = AutoBackend(model_path, self.device, data=data, fp16=fp16)
         self.model.eval()
         
         # class map < id: class name >
@@ -390,8 +390,8 @@ class Yolo(ODBase):
 
 @ObjectDetector.register(metadata=dict(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['obb'], frameworks=['ultralytics']))
 class YoloObb(Yolo):
-    def __init__(self, weights:str, device='gpu', data=None, fp16=False) -> None:
-        super().__init__(weights, device, data, fp16)
+    def __init__(self, model_path:str, device='gpu', data=None, fp16=False, **kwargs) -> None:
+        super().__init__(model_path, device, data, fp16)
         self.logger = logging.getLogger(__name__)
         
     @smart_inference_mode()
@@ -532,8 +532,8 @@ class YoloObb(Yolo):
 
 @ObjectDetector.register(metadata=dict(versions=['v1'], model_names=['yolov8', 'yolov11'], tasks=['pose'], frameworks=['ultralytics']))
 class YoloPose(Yolo):
-    def __init__(self, weights:str, device='gpu', data=None, fp16=False) -> None:
-        super().__init__(weights, device, data, fp16)
+    def __init__(self, model_path:str, device='gpu', data=None, fp16=False, **kwargs) -> None:
+        super().__init__(model_path, device, data, fp16)
         
         
     @smart_inference_mode()
