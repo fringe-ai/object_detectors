@@ -38,7 +38,7 @@ def predict(model_path, images_path, out_path, recursive=True):
         return
     
     logger.info(f"Loading engine: {model_path}.")
-    model = AnomalyModel(model_path)
+    model = AnomalyModel2(model_path)
     model.warmup()
 
     proctime = []
