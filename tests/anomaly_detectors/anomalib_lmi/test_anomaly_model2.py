@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import torch
 import subprocess
+import time
 from anomalib.deploy.inferencers.torch_inferencer import TorchInferencer
 from anomalib.data.utils import read_image
 
@@ -20,6 +21,7 @@ sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
 from anomalib_lmi.anomaly_model2 import AnomalyModel2
+from gadget_utils import pipeline_utils
 
 
 logging.basicConfig()
@@ -31,6 +33,18 @@ DATA_PATH = 'tests/assets/images/nvtec-ad'
 MODEL_PATH = 'tests/assets/models/ad/model_v1.pt'
 OUTPUT_PATH = 'tests/assets/validation/ad_v1'
 
+
+@pytest.fixture
+def test_data():
+    paths = glob.glob(os.path.join(DATA_PATH, '*.png'))
+    out = []
+    names = []
+    for p in paths:
+        im = cv2.imread(p)
+        rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+        out.append(rgb)
+        names.append(os.path.basename(p))
+    return out,names
 
 
 def test_compare_results_with_anomalib():
@@ -60,7 +74,7 @@ def test_compare_results_with_anomalib():
         pred2 = model2.predict(rgb)
         
         assert np.array_equal(pred, pred2)
-        
+
         
 def test_warmup():
     ad = AnomalyModel2(MODEL_PATH,224,112)
@@ -78,6 +92,63 @@ def test_model():
     
     ad = AnomalyModel2(MODEL_PATH)
     ad.test(DATA_PATH, OUTPUT_PATH)
+    
+    
+    
+def test_annotate(test_data):
+    def old_func(img, ad_scores, ad_threshold, ad_max):
+        # Resize AD score to match input image
+        h_img,w_img=img.shape[:2]
+        ad_scores=pipeline_utils.resize_image(ad_scores,H=h_img,W=w_img)
+        # Set all low score pixels to threshold to improve heat map precision
+        indices=np.where(ad_scores<ad_threshold)
+        ad_scores[indices]=ad_threshold
+        # Set upper limit on anomaly score.
+        ad_scores[ad_scores>ad_max]=ad_max
+        # Generate heat map
+        ad_norm=(ad_scores-ad_threshold)/(ad_max-ad_threshold)
+        ad_gray=(ad_norm*255).astype(np.uint8)
+        ad_bgr = cv2.applyColorMap(np.expand_dims(ad_gray,-1), cv2.COLORMAP_TURBO)
+        residual_rgb = cv2.cvtColor(ad_bgr, cv2.COLOR_BGR2RGB)
+        # Overlay anomaly heat map with input image
+        annot = cv2.addWeighted(img.astype(np.uint8), 0.6, residual_rgb, 0.4, 0)
+        indices=np.where(ad_gray==0)
+        # replace all below-threshold pixels with input image indicating no anomaly
+        annot[indices]=img[indices]
+        return annot
+    
+    
+    ad = AnomalyModel2(MODEL_PATH)
+    for _ in range(10):
+        ad.warmup()
+    
+    out_path = os.path.join(OUTPUT_PATH,'annotate')
+    os.makedirs(out_path,exist_ok=1)
+    
+    imgs,names = test_data
+    for im,name in zip(imgs,names):
+        pred = ad.predict(im)
+        mean,max = pred.mean(),pred.max()
+        
+        t0 = time.time()
+        out1 = old_func(im,pred,mean,max)
+        t1 = time.time() - t0
+        
+        out2 = ad.annotate(im,pred,mean,max)
+        bgr = cv2.cvtColor(out2,cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(out_path,name),bgr)
+        
+        if torch.cuda.is_available():
+            im = torch.from_numpy(im).cuda()
+            pred = torch.from_numpy(pred).cuda()
+            
+            t0 = time.time()
+            out3 = ad.annotate(im,pred,mean,max)
+            t2 = time.time() - t0
+            logger.info(f'improved proc time from {t1:.4f} to {t2:.4f}')
+            
+            assert np.array_equal(out1,out2)
+            assert np.array_equal(out2,out3)
     
     
 def test_cmds():
