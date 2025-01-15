@@ -11,7 +11,7 @@ from torchvision.transforms import v2
 from .base import Anomalib_Base, to_list
 from image_utils.tiler import Tiler, ScaleMode
 import gadget_utils.pipeline_utils as pipeline_utils
-
+from anomaly_detector import AnomalyDetector
 
 logging.basicConfig()
 
@@ -20,12 +20,12 @@ MINIMUM_QUANT=1e-12
 Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
 
 
-
+@AnomalyDetector.register(metadata=dict(frameworks=['anomalib'], model_names=['patchcore', 'padim', 'efficientad'], tasks=['seg'], versions=['v1']))
 class AnomalyModel2(Anomalib_Base):
     '''
     Desc: Class used for AD model inference.
     '''
-    logger = logging.getLogger('AnomalyModel v2')
+    logger = logging.getLogger('AnomalyModel v1')
     logger.setLevel(logging.INFO)
     
     def __init__(self, model_path, tile=None, stride=None, tile_mode='padding'):
