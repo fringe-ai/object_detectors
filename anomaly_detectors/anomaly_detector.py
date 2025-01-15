@@ -23,7 +23,7 @@ class AnomalyDetector:
                             key = (framework, model_name, task, version,json.dumps(info))
                             if key in cls._registry:
                                 raise ValueError(f"Wrapper already registered for version={version}, model_name='{model_name}', task='{task}', framework='{framework}', info='{json.dumps(info)}'.")
-                        cls._registry[key] = wrapper_cls
+                            cls._registry[key] = wrapper_cls
             return wrapper_cls
         return decorator
     def __new__(cls, metadata,*args, **kwargs):
