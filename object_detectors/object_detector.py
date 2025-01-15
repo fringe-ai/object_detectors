@@ -13,7 +13,7 @@ class ObjectDetector(ODBase):
         model_names = metadata.get('model_names', None)
         tasks = metadata.get('tasks', None)
         versions = metadata.get('versions', None)
-        info = metadata.get('info', None)
+        info = metadata.get('info', {})
         
         def decorator(wrapper_cls):
             assert all([frameworks, model_names, tasks, versions]), "frameworks, model_names, tasks, and versions must be specified."
@@ -36,7 +36,7 @@ class ObjectDetector(ODBase):
         model_name = metadata.get('model_name', None)
         task = metadata.get('task', None)
         version = metadata.get('version', None)
-        info = metadata.get('info', None)
+        info = metadata.get('info', {})
         if not all([framework, model_name, task, version]):
             raise ValueError("Framework, model_name, task, and version must be specified.")
         key = (framework, model_name, task, version, json.dumps(info))
