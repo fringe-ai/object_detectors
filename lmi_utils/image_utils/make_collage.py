@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 #%%
 def gen_collage(input_path,output_path,colmax,width,rowmax=None,file_filter=None):
 
-    files=glob.glob(os.path.join(input_path,'*.png'))
+    files=glob.glob(os.path.join(input_path,'*.png'))+glob.glob(os.path.join(input_path,'*.jpg'))
     if file_filter is not None:
         files = [s for s in files if file_filter in s]
     files=sorted(files)

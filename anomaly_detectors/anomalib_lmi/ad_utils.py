@@ -1,13 +1,10 @@
 import os
 import logging
-import time
-import copy
 import matplotlib
 from matplotlib import pyplot as plt
 from scipy.stats import kstest
 import numpy as np
 import cv2
-from anomalib_lmi.anomaly_model import AnomalyModel
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,7 +24,7 @@ def plot_histogram(xvec):
     plt.xlabel('Value')
     plt.ylabel('Frequency')
     plt.title('Anomaly Histogram')
-    plt.text(23, 45, f'$\mu={xvec.mean()}, $\sigma={xvec.std()}')
+    plt.text(23, 45, f'mu={xvec.mean()}, sigma={xvec.std()}')
     maxfreq = n.max()
     # Set a clean upper y-axis limit.
     plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
@@ -70,7 +67,6 @@ def plot_fig(predict_results, save_dir, err_thresh=None, err_max=None):
     for img,err_dist,fname in predict_results:
         # fname=fname.decode('ascii')
         fname,fext=os.path.splitext(fname)
-        logging.info(f'Processing data for: {fname}')
         err_dist=np.squeeze(err_dist)
         err_mean=err_dist.mean()
         err_std=err_dist.std()
@@ -248,7 +244,9 @@ def postprocess(self, orig_image, anomaly_map, err_thresh, err_size, mask=None, 
         useAnnotation:
             - boolean
             - switch for turning on/off annotation (returns original image if useAnnotation=False)
-"""
+    """
+    from anomalib_lmi.anomaly_model import AnomalyModel
+    
     PASS = 'PASS'
     FAIL = 'FAIL'
     h,w = orig_image.shape[:2]

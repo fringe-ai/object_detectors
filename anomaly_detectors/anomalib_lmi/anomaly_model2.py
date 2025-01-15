@@ -72,7 +72,7 @@ class AnomalyModel2(Anomalib_Base):
                         self.fp16 = True
                 else:
                     self.output_names.append(name)
-                im = self.from_numpy(np.empty(shape, dtype=dtype)).to(self.device)
+                im = self.from_numpy(np.empty(shape, dtype=dtype))
                 self.bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
             self.binding_addrs = OrderedDict((n, d.ptr) for n, d in self.bindings.items())
             self.model_shape=list(input_shape[-2:])
@@ -207,6 +207,7 @@ if __name__ == '__main__':
     convert_ap = subs.add_parser('convert',help='convert model to trt engine')
     convert_ap.add_argument('-i','--model_path', default="/app/model/model.pt", help='Input model file path.')
     convert_ap.add_argument('-o','--export_dir', default="/app/export")
+    convert_ap.add_argument('-c','--convert_type', default="trt", type=str, choices=['trt','onnx'], help='convert type: trt or onnx')
     convert_ap.add_argument('--hw',type=int,nargs=2,default=None,help='input image shape (h,w). Muse be provided if using tiling')
     convert_ap.add_argument('--tile',type=int,nargs=2,default=None,help='tile size (h,w)')
     convert_ap.add_argument('--stride',type=int,nargs=2,default=None,help='stride size (h,w)')
@@ -222,7 +223,11 @@ if __name__ == '__main__':
     if action=='convert':
         export_dir = args['export_dir']
         os.makedirs(export_dir, exist_ok=True)
-        ad.convert(model_path,export_dir,args['hw'])
+        if args['convert_type']=='onnx':
+            onnx_path = os.path.join(export_dir, 'model.onnx')
+            ad.convert_to_onnx(onnx_path, args['hw'])
+        if args['convert_type']=='trt':
+            ad.convert(model_path,export_dir,args['hw'])
     elif action=='test':
         os.makedirs(args['annot_dir'], exist_ok=True)
         ad.test(args['data_dir'],args['annot_dir'],args['generate_stats'],

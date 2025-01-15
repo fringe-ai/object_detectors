@@ -173,6 +173,57 @@ class GadgetSurfaceUtils():
                 if use_intensity:
                     pcd.colors = open3d.utility.Vector3dVector(np_intensity)
                 open3d.io.write_point_cloud(join(destination_path, file.replace(".gadget3d.tar", ".pcd")), pcd)
+    
+    def tar_2_pkl(self, source_path, destination_path, source_path_intensity=None):
+        import tarfile
+        import json
+        import tqdm
+
+        files = [f for f in listdir(source_path) if isfile(join(source_path, f)) and ".gadget3d.tar" in f]
+
+        use_intensity=True if source_path_intensity is not None else False
+        
+        for file in tqdm.tqdm(files):
+            # print(join(source_path, file))
+            
+            with tarfile.open(join(source_path, file), "r") as tar:
+                dest = join(destination_path  , file.replace(".gadget3d.tar", ""))
+                tar.extractall(dest)
+
+                img = Image.open(join(dest, "profile.png"))
+                npy_arr_p = numpy.array(img)
+                if npy_arr_p.dtype == numpy.uint16:
+                    npy_arr_p = npy_arr_p.view(numpy.int16) + numpy.int16(-32768) 
+                elif npy_arr_p.dtype == numpy.int32:
+                    npy_arr_p = (npy_arr_p - 32768).astype(numpy.int16) 
+                if use_intensity:
+                    try:
+                        fname_intensity=file.replace(".gadget3d.tar", ".gadget2d.jpg")
+                        path_intensity=join(source_path_intensity,fname_intensity)
+                        # print(f'[INFO] Loading intensity image from:{path_intensity}')
+                        img_intensity=numpy.array(Image.open(path_intensity))
+                        
+                    except:
+                        print(f'[WARNING] Failed to load intensity image.')
+                        use_intensity=False
+                        
+                metadata = None
+                with open(join(dest, "metadata.json"), "r") as f:
+                    metadata = json.load(f)
+
+                content = { 
+                    "metadata": {
+                        "schema": self.SCHEMA_ID,
+                        "version": self.VERSION, 
+                        "resolution": tuple(metadata["resolution"]), 
+                        "offset": tuple(metadata["offset"]), 
+                    }, 
+                    "profile_array": npy_arr_p,
+                    "intensity_array": img_intensity,
+                }
+                with open(join(destination_path, file.replace(".gadget3d.tar", ".gadget3d.pickle")), "wb") as f:
+                    pickle.dump(content, f, protocol=4)
+                
 
 
     def npy_2_pkl(self, source_path, destination_path):
@@ -333,5 +384,7 @@ if __name__=="__main__":
         ZResolution = args['zresolution']
         ZOffset = args['zoffset']
         translate.pcd_2_pkl(src,dest,ZResolution,ZOffset)
+    elif option=='tar_2_pkl':
+        translate.tar_2_pkl(src,dest,source_path_intensity=src_intensity)
     else:
-        raise Exception('Input option must be pkl_2_npy, pkl_2_png, npy_2_pkl, or png_2_pkl')
+        raise Exception('Input option must be pkl_2_npy, pkl_2_png, npy_2_pkl,tar_2_pkl, or png_2_pkl')

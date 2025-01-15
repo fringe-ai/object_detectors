@@ -38,6 +38,7 @@ class Anomalib_Base(ABC):
     logger.setLevel(logging.INFO)
     
     tiler = None
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     
     @abstractmethod
     def __init__(self) -> None:
@@ -148,27 +149,45 @@ class Anomalib_Base(ABC):
             self.convert_trt(onnx_path, trt_path, fp16)
             
             
-    @staticmethod
-    def annotate(img, ad_scores, ad_threshold, ad_max):
+    @torch.inference_mode()
+    def annotate(self, img, ad_scores, ad_threshold, ad_max):
+        """generate an annotated image 
+
+        Args:
+            img (numpy | tensor): an intensity image with a shape of [h,w,c]
+            ad_scores (numpy | tensor): an error distance map with a shape of [h,w]
+            ad_threshold (float): threshold for determining anomaly area
+            ad_max (float): max AD score for normalizing the annotated images
+            
+        Returns:
+            numpy: an annotated image
+        """
+        # convert to tensor
+        ad_scores = self.from_numpy(ad_scores)
+        img = self.from_numpy(img)
+        ad_threshold = self.from_numpy(np.array(ad_threshold))
+        ad_max = self.from_numpy(np.array(ad_max))
         # Resize AD score to match input image
         h_img,w_img=img.shape[:2]
         ad_scores=pipeline_utils.resize_image(ad_scores,H=h_img,W=w_img)
-        # Set all low score pixels to threshold to improve heat map precision
-        indices=np.where(ad_scores<ad_threshold)
-        ad_scores[indices]=ad_threshold
-        # Set upper limit on anomaly score.
+        # shrink the min-max range
+        ad_scores[ad_scores<ad_threshold] = ad_threshold
         ad_scores[ad_scores>ad_max]=ad_max
-        # Generate heat map
+        # apply colormap
         ad_norm=(ad_scores-ad_threshold)/(ad_max-ad_threshold)
-        ad_gray=(ad_norm*255).astype(np.uint8)
-        ad_bgr = cv2.applyColorMap(np.expand_dims(ad_gray,-1), cv2.COLORMAP_TURBO)
+        ad_gray=(ad_norm*255).to(torch.uint8)
+        ad_bgr = cv2.applyColorMap(np.expand_dims(ad_gray.cpu().numpy(),-1), cv2.COLORMAP_TURBO)
         residual_rgb = cv2.cvtColor(ad_bgr, cv2.COLOR_BGR2RGB)
+        residual_rgb = self.from_numpy(residual_rgb)
+        
         # Overlay anomaly heat map with input image
-        annot = cv2.addWeighted(img.astype(np.uint8), 0.6, residual_rgb, 0.4, 0)
-        indices=np.where(ad_gray==0)
+        annot = img*0.6 + residual_rgb*0.4
+        annot = annot.round().to(torch.uint8)
+        img = img.to(torch.uint8)
+        m = ad_gray==0
         # replace all below-threshold pixels with input image indicating no anomaly
-        annot[indices]=img[indices]
-        return annot
+        annot[m] = img[m]
+        return annot.cpu().numpy()
     
     
     @staticmethod
@@ -203,6 +222,7 @@ class Anomalib_Base(ABC):
         import matplotlib.pyplot as plt
         from tabulate import tabulate
         import csv
+        from anomalib_lmi.ad_utils import plot_fig
         
         def find_p(thresh_array,p_patch_array,p_sample_array, p_sample_target):
             '''
@@ -321,7 +341,7 @@ class Anomalib_Base(ABC):
                     self.logger.warning(f'Anomaly patch max set to minimum discernable value: {anom_max} due to vanishing gradient in the patch quantile.  Sample failure rate: {quantile_sample.min()*100:.2e}')
                     
             results=zip(img_all,anom_all,fname_all)
-            self.plot_fig(results,annot_dir,err_thresh=anom_threshold,err_max=anom_max)
+            plot_fig(results,annot_dir,err_thresh=anom_threshold,err_max=anom_max)
             
         # get anom stats
         means = np.array([anom.mean() for anom in anom_all])
@@ -355,82 +375,4 @@ class Anomalib_Base(ABC):
             # Repeat error table
             self.logger.info('Threshold options:\n'+tp_print)
             
-            
-    @staticmethod
-    def plot_fig(predict_results, save_dir, err_thresh=None, err_max=None):
-        from matplotlib import pyplot as plt
-        '''
-        DESCRIPTION: generate matplotlib figures for inspection results
-
-        ARGS: 
-            predict_results: zip object
-                image_array: numpy array (batch,dim,dim,3) for all images in dataset
-                error_dist_array: numpy array (batch,dim,dim,3) for normalized distances/errors
-                fname_array: numpy array (batch) for desriptive filenames for each img/score
-            err_mean: mean training error (~0)
-            err_std: std training error
-            save_dir: path to save directory
-            err_ceil_z: z score for heat map normalization
-        '''
-
-        if not os.path.exists(save_dir):
-            os.mkdir(save_dir)
-
-        # Assume normalized error distance
-        ERR_FLOOR = 0
-
-        for img,err_dist,fname in predict_results:
-            # fname=fname.decode('ascii')
-            fname,fext=os.path.splitext(fname)
-            err_dist=np.squeeze(err_dist)
-            err_mean=err_dist.mean()
-            err_std=err_dist.std()
-            if err_thresh is None:
-                err_thresh=err_dist.mean()
-            if err_max is None:
-                err_max=err_dist.max()
-
-            heat_map=err_dist.copy()
-            heat_map[heat_map<err_thresh]=err_thresh
-            fig_img, ax_img = plt.subplots(1, 3, figsize=(12, 3))
-            fig_img.subplots_adjust(right=0.9)
-            for ax_i in ax_img:
-                ax_i.axes.xaxis.set_visible(False)
-                ax_i.axes.yaxis.set_visible(False)
-            ax_img[0].imshow(img.astype(int))
-            ax_img[0].title.set_text('Image')
-            n, bins, patches = ax_img[1].hist(x=err_dist.flatten(), bins='auto', color='#0504aa',alpha=0.7, rwidth=0.85)
-            ax_img[1].axes.xaxis.set_visible(True)
-            ax_img[1].axes.yaxis.set_visible(True)
-            ax_img[1].grid(axis='y', alpha=0.75)
-            ax_img[1].xaxis.axis_name='Error'
-            ax_img[1].yaxis.axis_name='Frequency'
-            ax_img[1].title.set_text('Anomaly Histogram')
-            ax_img[1].text(bins.mean(), n.mean(), f'\u03BC={err_mean:0.1f}, \u03C3={err_std:0.1f}')
-            ax_img[2].imshow(cv2.cvtColor(img,cv2.COLOR_RGB2GRAY), cmap='gray', interpolation='none')
-            ax=ax_img[2].imshow(heat_map, cmap='jet', alpha=0.4, interpolation='none',vmin=err_thresh,vmax=err_max)
-            ax_img[2].title.set_text('Anomaly Heat Map')
-            # ax_img[2].imshow(mask.astype(int), cmap='gray')
-            # ax_img[2].title.set_text('Predicted Mask')
-            left = 0.92
-            bottom = 0.15
-            width = 0.015
-            height = 1 - 2 * bottom
-            rect = [left, bottom, width, height]
-            cbar_ax = fig_img.add_axes(rect)
-            cb = plt.colorbar(ax, shrink=0.6, cax=cbar_ax, fraction=0.046)
-            cb.ax.tick_params(labelsize=8)
-            font = {
-                'family': 'serif',
-                'color': 'black',
-                'weight': 'normal',
-                'size': 8,
-            }
-            cb.set_label('Anomaly Score', fontdict=font)
-            filepath=os.path.join(save_dir,f'{fname}_annot.png')
-            folder=os.path.split(filepath)[0]
-            if not os.path.exists(folder):
-                os.makedirs(folder)
-            fig_img.savefig(filepath, dpi=100)
-            plt.close()
     
