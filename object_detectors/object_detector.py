@@ -1,6 +1,6 @@
 from od_base import ODBase
-from yolov8_lmi import *
-from ultralytics_lmi.yolo import *
+from yolov8_lmi.model import *
+from ultralytics_lmi.yolo.model import *
 import json
 
 class ObjectDetector(ODBase):
