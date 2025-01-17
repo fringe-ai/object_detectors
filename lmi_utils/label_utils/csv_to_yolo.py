@@ -186,12 +186,13 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
         new_rows = {}
         for kp in kps:
             x,y = kp
+            x,y = x*W, y*H
             hit = 0
             for row in rows:
                 if len(row)!=5:
                     logging.warning(f'key point can only be assign to a bbox, but got {len(row)} values in a row. Skip it.')
                     continue
-                xc,yc,w,h = row[1:]
+                xc,yc,w,h = np.array(row[1:]*np.array([W,H,W,H]))
                 x1,y1 = xc-w/2, yc-h/2
                 x2,y2 = xc+w/2, yc+h/2
                 if x1<=x<=x2 and y1<=y<=y2:
