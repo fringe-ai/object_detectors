@@ -12,7 +12,7 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def cropped_bbox(bbox1, bbox2):
+def crop_bbox(bbox1, bbox2):
     crop_x1, crop_y1, crop_x2, crop_y2 = bbox1
     target_x1, target_y1, target_x2, target_y2 = bbox2
     adjusted_x1 = target_x1 - crop_x1
@@ -111,7 +111,7 @@ def main():
                 x1,y1 = shape.up_left
                 x2,y2 = shape.bottom_right
                 bbox = [x1,y1,x2,y2]
-                updated_bbox = cropped_bbox(foreground_shapes[fname]['foreground'], bbox)
+                updated_bbox = crop_bbox(foreground_shapes[fname]['foreground'], bbox)
                 annots[updated_fname].append(
                      Rect(
                         up_left=[updated_bbox[0], updated_bbox[1]],
@@ -143,7 +143,7 @@ def main():
         x1,y1,x2,y2 = foreground_shapes[fname]['foreground']
         cropped_image = image[y1:y2, x1:x2]
         
-        cv2.imwrite(os.path.join(updated_fname), cropped_image)
+        cv2.imwrite(os.path.join(args['path_out'], updated_fname), cropped_image)
         
     
     # save the updated shapes
